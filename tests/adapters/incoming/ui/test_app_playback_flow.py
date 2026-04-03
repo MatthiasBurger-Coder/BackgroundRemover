@@ -144,7 +144,11 @@ class LiveOperatorWorkspaceFragmentTests(unittest.TestCase):
         rerun = Mock()
         fake_st = types.SimpleNamespace(session_state=session_state, rerun=rerun)
 
-        with patch.object(ui_app, "st", fake_st), patch.object(ui_app, "render_operator_workspace") as render_workspace:
+        with (
+            patch.object(ui_app, "st", fake_st),
+            patch.object(ui_app, "ensure_current_frame_loaded"),
+            patch.object(ui_app, "_render_operator_workspace_content") as render_content,
+        ):
             ui_app._render_live_operator_workspace_body(
                 [],
                 expected_ui_generation=3,
@@ -152,7 +156,55 @@ class LiveOperatorWorkspaceFragmentTests(unittest.TestCase):
             )
 
         rerun.assert_not_called()
-        render_workspace.assert_called_once_with([])
+        render_content.assert_called_once_with([])
+
+    def test_live_fragment_body_skips_playback_sync_when_paused(self) -> None:
+        session_state = types.SimpleNamespace(
+            playback_running=False,
+            ui_generation=3,
+            playback_generation=8,
+        )
+        fake_st = types.SimpleNamespace(session_state=session_state, rerun=Mock())
+
+        with (
+            patch.object(ui_app, "st", fake_st),
+            patch.object(ui_app, "sync_playback_position") as sync_playback,
+            patch.object(ui_app, "ensure_current_frame_loaded") as ensure_frame_loaded,
+            patch.object(ui_app, "_render_operator_workspace_content") as render_content,
+        ):
+            ui_app._render_live_operator_workspace_body(
+                [],
+                expected_ui_generation=3,
+                expected_playback_generation=8,
+            )
+
+        sync_playback.assert_not_called()
+        ensure_frame_loaded.assert_called_once_with()
+        render_content.assert_called_once_with([])
+
+    def test_live_fragment_body_syncs_playback_before_render_when_running(self) -> None:
+        session_state = types.SimpleNamespace(
+            playback_running=True,
+            ui_generation=3,
+            playback_generation=8,
+        )
+        fake_st = types.SimpleNamespace(session_state=session_state, rerun=Mock())
+
+        with (
+            patch.object(ui_app, "st", fake_st),
+            patch.object(ui_app, "sync_playback_position") as sync_playback,
+            patch.object(ui_app, "ensure_current_frame_loaded") as ensure_frame_loaded,
+            patch.object(ui_app, "_render_operator_workspace_content") as render_content,
+        ):
+            ui_app._render_live_operator_workspace_body(
+                [],
+                expected_ui_generation=3,
+                expected_playback_generation=8,
+            )
+
+        sync_playback.assert_called_once_with()
+        ensure_frame_loaded.assert_called_once_with()
+        render_content.assert_called_once_with([])
 
     def test_live_fragment_configures_dynamic_run_every(self) -> None:
         session_state = types.SimpleNamespace(
@@ -215,14 +267,15 @@ class LiveOperatorWorkspaceFragmentTests(unittest.TestCase):
         rerun = Mock()
         fake_st = types.SimpleNamespace(session_state=session_state, rerun=rerun)
 
-        def stop_playback(_failure_cases) -> None:
+        def stop_playback() -> None:
             session_state.playback_running = False
 
-        with patch.object(ui_app, "st", fake_st), patch.object(
-            ui_app,
-            "render_operator_workspace",
-            side_effect=stop_playback,
-        ) as render_workspace:
+        with (
+            patch.object(ui_app, "st", fake_st),
+            patch.object(ui_app, "sync_playback_position", side_effect=stop_playback) as sync_playback,
+            patch.object(ui_app, "ensure_current_frame_loaded") as ensure_frame_loaded,
+            patch.object(ui_app, "_render_operator_workspace_content") as render_content,
+        ):
             ui_app._render_live_operator_workspace_body(
                 [],
                 expected_ui_generation=3,
@@ -230,7 +283,9 @@ class LiveOperatorWorkspaceFragmentTests(unittest.TestCase):
             )
 
         rerun.assert_called_once_with()
-        render_workspace.assert_called_once_with([])
+        sync_playback.assert_called_once_with()
+        ensure_frame_loaded.assert_called_once_with()
+        render_content.assert_called_once_with([])
 
 
 class OperatorPanelSourceLifecycleTests(unittest.TestCase):

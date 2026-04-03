@@ -51,6 +51,13 @@ def main() -> None:
     playback_interval_seconds = (
         get_playback_interval_seconds() if st.session_state.playback_running else None
     )
+    LOGGER.debug(
+        "Live fragment mounted playback_running=%s ui_generation=%s playback_generation=%s run_every=%s",
+        st.session_state.playback_running,
+        int(st.session_state.ui_generation),
+        int(st.session_state.playback_generation),
+        playback_interval_seconds,
+    )
     render_live_operator_workspace(
         failure_cases,
         playback_interval_seconds=playback_interval_seconds,
@@ -67,6 +74,12 @@ def render_live_operator_workspace(
     expected_playback_generation: int,
 ) -> None:
     """Render the operator workspace inside a fragment with a dynamic playback cadence."""
+    LOGGER.debug(
+        "Live fragment rerun interval set run_every=%s expected_ui_generation=%s expected_playback_generation=%s",
+        playback_interval_seconds,
+        expected_ui_generation,
+        expected_playback_generation,
+    )
     fragment_renderer = st.fragment(
         _render_live_operator_workspace_body,
         run_every=playback_interval_seconds,
@@ -105,7 +118,21 @@ def _render_live_operator_workspace_body(
         int(st.session_state.playback_generation),
         playback_running_at_start,
     )
-    render_operator_workspace(failure_cases)
+    if playback_running_at_start:
+        LOGGER.debug(
+            "Playback sync executed ui_generation=%s playback_generation=%s",
+            int(st.session_state.ui_generation),
+            int(st.session_state.playback_generation),
+        )
+        sync_playback_position()
+    else:
+        LOGGER.debug(
+            "Playback rerun paused ui_generation=%s playback_generation=%s",
+            int(st.session_state.ui_generation),
+            int(st.session_state.playback_generation),
+        )
+    ensure_current_frame_loaded()
+    _render_operator_workspace_content(failure_cases)
     if playback_running_at_start and not st.session_state.playback_running:
         LOGGER.debug("Playback paused during fragment render; requesting full app rerun to disable auto-reruns")
         st.rerun()
@@ -115,6 +142,11 @@ def render_operator_workspace(failure_cases) -> None:
     """Render the operator workspace once using the current synchronized UI state."""
     sync_playback_position()
     ensure_current_frame_loaded()
+    _render_operator_workspace_content(failure_cases)
+
+
+def _render_operator_workspace_content(failure_cases) -> None:
+    """Render the workspace view using the current synchronized frame state."""
     LOGGER.debug(
         "Rendering operator workspace asset_id=%s frame_index=%s timecode=%s playback_running=%s",
         st.session_state.asset_id,
