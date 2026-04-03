@@ -5,12 +5,10 @@ from __future__ import annotations
 import streamlit as st
 
 from ui.mock_data import FrameLabel
+from ui.components.video_panel import render_workspace_placeholder_panel, render_workspace_video_panel
 
 
 def render_preview_panels(selected_frame: FrameLabel) -> None:
-    st.subheader("Workspace")
-    st.caption("Desktop-first workspace with the uploaded source video as the primary anchor.")
-
     _render_original_video_panel(selected_frame)
 
     detail_tab, mask_tab, preview_tab = st.tabs(["Source Context", "Mask View", "Masked Preview"])
@@ -55,36 +53,34 @@ def _render_view_placeholder(
     summary_lines: list[str],
     inspection_lines: list[str],
 ) -> None:
-    _render_view_placeholder_header(title=title, summary_lines=summary_lines)
-
-    with st.container(border=True):
-        st.markdown("**Viewport Placeholder**")
-        st.caption("This panel remains placeholder-only in the current prototype.")
-        for line in inspection_lines:
-            st.write(line)
+    render_workspace_placeholder_panel(
+        title=title,
+        metadata_items=[_split_summary_line(line) for line in summary_lines],
+        placeholder_title="Viewport Placeholder",
+        placeholder_lines=["This panel remains placeholder-only in the current prototype.", *inspection_lines],
+    )
 
 
 def _render_original_video_panel(selected_frame: FrameLabel) -> None:
     viewport_status = "uploaded source available" if st.session_state.video_loaded else "waiting for uploaded source"
-    _render_view_placeholder_header(
+    render_workspace_video_panel(
         title="Original Video",
-        summary_lines=[
-            f"Active frame: {selected_frame.index:04d}",
-            f"Timecode: {selected_frame.timecode}",
-            f"Frame label: {selected_frame.label}",
-            f"Viewport status: {viewport_status}",
+        metadata_items=[
+            ("Frame", f"{selected_frame.index:04d}"),
+            ("Timecode", selected_frame.timecode),
+            ("Status", viewport_status),
         ],
+        video_bytes=st.session_state.video_bytes,
+        mime_type=st.session_state.video_mime_type,
+        asset_name=st.session_state.video_name if st.session_state.video_loaded else None,
+        empty_title="Source video not available",
+        empty_lines=[
+            "Upload an original video in the operator column to display it here.",
+            "No source video is currently attached to this session.",
+        ],
+        panel_note="Use the source video as the primary reference while tuning prompts and reviewing frame context.",
+        stage_height="clamp(320px, 54vh, 680px)",
     )
-
-    with st.container(border=True):
-        st.markdown("**Source Video Player**")
-        if st.session_state.video_loaded and st.session_state.video_bytes is not None:
-            st.caption(f"Uploaded asset: {st.session_state.video_name}")
-            st.video(st.session_state.video_bytes, format=st.session_state.video_mime_type)
-            st.caption("Use the source video as the primary reference while tuning prompts and reviewing frame context.")
-        else:
-            st.info("Upload an original video in the operator column to display it here.")
-            st.write("No source video is currently attached to this session.")
 
 
 def _render_source_context_panel(selected_frame: FrameLabel) -> None:
@@ -97,9 +93,6 @@ def _render_source_context_panel(selected_frame: FrameLabel) -> None:
         detail_columns[1].write("Future integration: decoded frame transport and timeline-aware inspection.")
 
 
-def _render_view_placeholder_header(title: str, summary_lines: list[str]) -> None:
-    st.markdown(f"**{title}**")
-    metadata_columns = st.columns(len(summary_lines))
-    for column, line in zip(metadata_columns, summary_lines, strict=False):
-        label, value = line.split(": ", maxsplit=1)
-        column.metric(label, value)
+def _split_summary_line(line: str) -> tuple[str, str]:
+    label, value = line.split(": ", maxsplit=1)
+    return label, value

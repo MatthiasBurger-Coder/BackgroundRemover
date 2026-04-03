@@ -6,6 +6,7 @@ from ui.components.preview_panels import render_preview_panels
 from ui.components.prompt_panel import render_prompt_panel
 from ui.components.sidebar import render_operator_panel, render_sidebar
 from ui.components.status_panel import render_status_panel
+from ui.components.video_panel import render_workspace_placeholder_panel, render_workspace_video_panel
 
 __all__ = [
     "render_failure_panel",
@@ -15,4 +16,6 @@ __all__ = [
     "render_prompt_panel",
     "render_sidebar",
     "render_status_panel",
+    "render_workspace_placeholder_panel",
+    "render_workspace_video_panel",
 ]

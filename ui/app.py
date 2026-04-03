@@ -54,17 +54,12 @@ def main() -> None:
 
 
 def render_workspace_header(selected_frame) -> None:
-    st.title("Video Mask Creation Workspace")
-    st.caption(
-        "Internal Streamlit operator shell for prompt-driven video mask review. "
-        "This prototype exposes UI structure only and does not execute processing."
-    )
-
-    metric_columns = st.columns(4)
-    metric_columns[0].metric("Selected Frame", f"{selected_frame.index:04d}")
-    metric_columns[1].metric("Frame Label", selected_frame.label)
-    metric_columns[2].metric("Prompt Count", str(len(st.session_state.prompt_entries)))
-    metric_columns[3].metric("Preview Counter", str(st.session_state.preview_generation))
+    header_columns = st.columns([1.6, 0.7, 0.7, 0.7], gap="medium")
+    header_columns[0].markdown("### Video Mask Creation Workspace")
+    header_columns[0].caption("Desktop-first operator shell for prompt-driven video mask review.")
+    header_columns[1].markdown(f"**Frame**  \n{selected_frame.index:04d}")
+    header_columns[2].markdown(f"**Prompts**  \n{len(st.session_state.prompt_entries)}")
+    header_columns[3].markdown(f"**Preview**  \n{st.session_state.preview_generation}")
 
 
 if __name__ == "__main__":
