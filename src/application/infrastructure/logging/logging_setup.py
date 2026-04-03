@@ -23,6 +23,7 @@ def configure_logging(
     logger_names: Iterable[str] | None = None,
 ) -> None:
     install_trace_level()
+    CorrelationIdManager.init_correlation_id()
 
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(DEFAULT_FORMAT))
