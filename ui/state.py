@@ -28,6 +28,7 @@ def initialize_state() -> None:
         "video_loaded": False,
         "video_name": "No video selected",
         "video_mime_type": None,
+        "source_video_bytes": None,
         "video_upload_signature": None,
         "asset_id": None,
         "video_fps": 0.0,
@@ -72,6 +73,7 @@ def register_video_selection(uploaded_file: Any | None) -> bool:
             _apply_video_metadata(
                 metadata=metadata,
                 mime_type=uploaded_file.type or "video/mp4",
+                source_video_bytes=uploaded_bytes,
                 upload_signature=upload_signature,
                 reset_prompts=False,
             )
@@ -87,6 +89,7 @@ def register_video_selection(uploaded_file: Any | None) -> bool:
     _apply_video_metadata(
         metadata=metadata,
         mime_type=uploaded_file.type or "video/mp4",
+        source_video_bytes=uploaded_bytes,
         upload_signature=upload_signature,
         reset_prompts=True,
     )
@@ -252,12 +255,14 @@ def _apply_video_metadata(
     *,
     metadata: VideoAssetMetadata,
     mime_type: str,
+    source_video_bytes: bytes | None,
     upload_signature: str,
     reset_prompts: bool,
 ) -> None:
     st.session_state.video_loaded = True
     st.session_state.video_name = metadata.filename
     st.session_state.video_mime_type = mime_type
+    st.session_state.source_video_bytes = source_video_bytes
     st.session_state.video_upload_signature = upload_signature
     st.session_state.asset_id = metadata.asset_id
     st.session_state.video_fps = metadata.fps
@@ -284,6 +289,7 @@ def _clear_video_asset_state() -> None:
     st.session_state.video_loaded = False
     st.session_state.video_name = "No video selected"
     st.session_state.video_mime_type = None
+    st.session_state.source_video_bytes = None
     st.session_state.video_upload_signature = None
     st.session_state.asset_id = None
     st.session_state.video_fps = 0.0

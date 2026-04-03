@@ -1,4 +1,4 @@
-"""Source transport and timeline UI for a single backend-managed video asset."""
+"""Source transport and reference UI for a single backend-managed video asset."""
 
 from __future__ import annotations
 
@@ -7,30 +7,72 @@ from html import escape
 import streamlit as st
 
 from ui.components.transport_controls import render_transport_controls
+from ui.components.video_panel import render_workspace_video_panel
 from ui.state import format_timecode, sync_current_frame_index
 
 
 def render_source_context_panel() -> None:
-    """Render the single-asset source navigation area."""
+    """Render the source reference area with video playback, metadata, and navigation."""
     st.subheader("Source Context")
-    st.caption("Single-video transport and ruler for backend-managed source navigation.")
+    st.caption("Reference video, source metadata, transport controls, and timeline for the active backend-managed asset.")
 
     if not st.session_state.video_loaded or st.session_state.asset_id is None:
-        st.info("Upload a source video in the operator column to enable transport and timeline navigation.")
-        st.write("The workbench will bind to the selected frame after the asset is registered.")
+        render_workspace_video_panel(
+            title="Source Reference",
+            metadata_items=[
+                ("Status", "Awaiting upload"),
+                ("Role", "Reference"),
+                ("Transport", "Inactive"),
+            ],
+            video_bytes=None,
+            mime_type=None,
+            asset_name=None,
+            empty_title="Source reference not available",
+            empty_lines=[
+                "Upload a source video in the operator column to enable reference playback and frame navigation.",
+                "Source Context will host the original video while the Mask Workbench stays focused on the selected work frame.",
+            ],
+            panel_note="Source Context drives workbench frame selection once a backend-managed asset is registered.",
+            stage_height="clamp(220px, 38vh, 420px)",
+        )
         return
 
-    summary_columns = st.columns(5, gap="small")
-    summary_columns[0].metric("Asset", _short_asset_id(st.session_state.asset_id))
-    summary_columns[1].metric("FPS", f"{st.session_state.video_fps:.2f}")
-    summary_columns[2].metric("Frames", str(st.session_state.video_frame_count))
-    summary_columns[3].metric("Duration", format_timecode(st.session_state.video_duration_seconds))
-    summary_columns[4].metric("Resolution", f"{st.session_state.video_width} x {st.session_state.video_height}")
+    render_workspace_video_panel(
+        title="Source Reference Video",
+        metadata_items=[
+            ("Asset", _short_asset_id(st.session_state.asset_id)),
+            ("FPS", f"{st.session_state.video_fps:.2f}"),
+            ("Frames", str(st.session_state.video_frame_count)),
+            ("Resolution", f"{st.session_state.video_width} x {st.session_state.video_height}"),
+        ],
+        video_bytes=st.session_state.source_video_bytes,
+        mime_type=st.session_state.video_mime_type,
+        asset_name=st.session_state.video_name,
+        empty_title="Source reference not available",
+        empty_lines=[
+            "The backend asset is registered, but the uploaded source video bytes are not available for playback.",
+            "Re-upload the source video to restore the reference viewer.",
+        ],
+        panel_note=(
+            "Reference role: inspect original motion and context while transport drives the selected workbench frame."
+        ),
+        stage_height="clamp(240px, 42vh, 460px)",
+    )
 
     with st.container(border=True):
-        st.markdown(f"**Source Asset**  \n{st.session_state.video_name}")
+        st.markdown("**Source Navigation**")
+        st.caption("Use transport and the single-video ruler to choose the frame shown in the Mask Workbench.")
+
         if st.session_state.frame_error_message:
             st.warning(st.session_state.frame_error_message)
+
+        metadata_columns = st.columns(4, gap="small")
+        metadata_columns[0].write(f"Asset: {st.session_state.video_name}")
+        metadata_columns[1].write(f"Duration: {format_timecode(st.session_state.video_duration_seconds)}")
+        metadata_columns[2].write(f"Current frame: {st.session_state.current_frame_index:04d}")
+        playback_label = "Running" if st.session_state.playback_running else "Paused"
+        metadata_columns[3].write(f"Playback: {playback_label}")
+
         render_transport_controls(disabled=st.session_state.video_frame_count <= 0)
         _render_timeline_ruler()
         st.slider(
@@ -45,9 +87,7 @@ def render_source_context_panel() -> None:
         context_columns = st.columns(3, gap="small")
         context_columns[0].write(f"Frame: {st.session_state.current_frame_index:04d}")
         context_columns[1].write(f"Timecode: {format_timecode(st.session_state.current_frame_timestamp_seconds)}")
-        playback_label = "Running" if st.session_state.playback_running else "Paused"
-        context_columns[2].write(f"Playback: {playback_label}")
-        st.caption("Source Context drives the shared current frame used by the Mask Workbench.")
+        context_columns[2].write("Workbench link: active")
 
 
 def _render_timeline_ruler() -> None:
