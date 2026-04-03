@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 
 if __package__ in {None, ""}:
@@ -23,7 +22,6 @@ from ui.mock_data import get_failure_cases, get_runtime_handles, get_runtime_sna
 from ui.state import (
     ensure_current_frame_loaded,
     format_timecode,
-    get_playback_interval_seconds,
     initialize_state,
     sync_playback_position,
 )
@@ -38,9 +36,22 @@ def main() -> None:
 
     failure_cases = get_failure_cases()
     initialize_state()
+    if st.session_state.playback_running:
+        render_live_operator_workspace(failure_cases)
+    else:
+        render_operator_workspace(failure_cases)
+
+
+@st.fragment(run_every=0.25)
+def render_live_operator_workspace(failure_cases) -> None:
+    """Render the operator workspace with a fragment-scoped playback cadence while playing."""
+    render_operator_workspace(failure_cases)
+
+
+def render_operator_workspace(failure_cases) -> None:
+    """Render the operator workspace once using the current synchronized UI state."""
     sync_playback_position()
     ensure_current_frame_loaded()
-
     render_workspace_header()
 
     operator_column, workspace_column = st.columns([0.9, 2.1], gap="large")
@@ -56,10 +67,6 @@ def main() -> None:
             render_failure_panel(failure_cases)
         with workspace_tabs[1]:
             render_status_panel(get_runtime_snapshot(), get_runtime_handles())
-
-    if st.session_state.playback_running:
-        time.sleep(get_playback_interval_seconds())
-        st.rerun()
 
 
 def render_workspace_header() -> None:

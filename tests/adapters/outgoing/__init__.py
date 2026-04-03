@@ -1,0 +1,1 @@
+"""Outgoing adapter tests."""
