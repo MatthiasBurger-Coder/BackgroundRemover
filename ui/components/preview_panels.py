@@ -9,7 +9,7 @@ from ui.components.video_panel import render_workspace_placeholder_panel, render
 
 
 def render_preview_panels(selected_frame: FrameLabel) -> None:
-    _render_original_video_panel(selected_frame)
+    _render_mask_workbench_panel(selected_frame)
 
     detail_tab, mask_tab, preview_tab = st.tabs(["Source Context", "Mask View", "Masked Preview"])
 
@@ -61,36 +61,54 @@ def _render_view_placeholder(
     )
 
 
-def _render_original_video_panel(selected_frame: FrameLabel) -> None:
-    viewport_status = "uploaded source available" if st.session_state.video_loaded else "waiting for uploaded source"
-    render_workspace_video_panel(
-        title="Original Video",
+def _render_mask_workbench_panel(selected_frame: FrameLabel) -> None:
+    workbench_state = "ready for authoring" if st.session_state.video_loaded else "waiting for source context"
+    overlay_state = "debug overlay on" if st.session_state.show_debug_overlay else "debug overlay off"
+    render_workspace_placeholder_panel(
+        title="Mask Workbench",
         metadata_items=[
             ("Frame", f"{selected_frame.index:04d}"),
-            ("Timecode", selected_frame.timecode),
-            ("Status", viewport_status),
+            ("Mode", "Authoring"),
+            ("Overlay", overlay_state),
+            ("State", workbench_state),
         ],
-        video_bytes=st.session_state.video_bytes,
-        mime_type=st.session_state.video_mime_type,
-        asset_name=st.session_state.video_name if st.session_state.video_loaded else None,
-        empty_title="Source video not available",
-        empty_lines=[
-            "Upload an original video in the operator column to display it here.",
-            "No source video is currently attached to this session.",
+        placeholder_title="Mask Authoring Workspace",
+        placeholder_lines=[
+            "Primary operator surface for future prompt-driven mask creation and refinement.",
+            "This viewport is reserved for the editing canvas, overlay interactions, and mask layer inspection.",
+            "No live mask authoring logic is active yet in this prototype.",
         ],
-        panel_note="Use the source video as the primary reference while tuning prompts and reviewing frame context.",
-        stage_height="clamp(320px, 54vh, 680px)",
+        panel_note=(
+            f"Active frame {selected_frame.index:04d} | "
+            "Future use: prompt interaction, overlay editing, mask review."
+        ),
+        stage_height="clamp(320px, 52vh, 640px)",
     )
 
 
 def _render_source_context_panel(selected_frame: FrameLabel) -> None:
-    with st.container(border=True):
-        st.markdown("**Source Context**")
-        detail_columns = st.columns(2, gap="large")
-        detail_columns[0].write("Operator use: review the uploaded source video while setting prompts.")
-        detail_columns[0].write("Current frame focus remains conceptual in this prototype.")
-        detail_columns[1].write(f"Frame note: {selected_frame.note}")
-        detail_columns[1].write("Future integration: decoded frame transport and timeline-aware inspection.")
+    source_status = "uploaded source available" if st.session_state.video_loaded else "waiting for uploaded source"
+    render_workspace_video_panel(
+        title="Source Context",
+        metadata_items=[
+            ("Frame", f"{selected_frame.index:04d}"),
+            ("Timecode", selected_frame.timecode),
+            ("Status", source_status),
+        ],
+        video_bytes=st.session_state.video_bytes,
+        mime_type=st.session_state.video_mime_type,
+        asset_name=st.session_state.video_name if st.session_state.video_loaded else None,
+        empty_title="Source reference not available",
+        empty_lines=[
+            "Upload an original video in the operator column to inspect it here.",
+            "Use this reference view for source comparison while authoring masks in the workbench.",
+        ],
+        panel_note=(
+            f"Reference role: source comparison and operator inspection | "
+            f"Frame note: {selected_frame.note}"
+        ),
+        stage_height="clamp(280px, 44vh, 540px)",
+    )
 
 
 def _split_summary_line(line: str) -> tuple[str, str]:

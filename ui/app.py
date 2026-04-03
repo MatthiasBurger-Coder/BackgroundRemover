@@ -56,7 +56,7 @@ def main() -> None:
 def render_workspace_header(selected_frame) -> None:
     header_columns = st.columns([1.6, 0.7, 0.7, 0.7], gap="medium")
     header_columns[0].markdown("### Video Mask Creation Workspace")
-    header_columns[0].caption("Desktop-first operator shell for prompt-driven video mask review.")
+    header_columns[0].caption("Desktop-first operator shell with a dedicated mask workbench and separate source reference context.")
     header_columns[1].markdown(f"**Frame**  \n{selected_frame.index:04d}")
     header_columns[2].markdown(f"**Prompts**  \n{len(st.session_state.prompt_entries)}")
     header_columns[3].markdown(f"**Preview**  \n{st.session_state.preview_generation}")
