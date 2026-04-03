@@ -13,21 +13,20 @@ from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from ui.components import (
     render_failure_panel,
-    render_parameter_panel,
+    render_operator_panel,
     render_preview_panels,
     render_prompt_panel,
-    render_sidebar,
     render_status_panel,
 )
 from ui.mock_data import get_failure_cases, get_frame_catalog, get_runtime_handles, get_runtime_snapshot
-from ui.state import get_selected_frame, initialize_state, sync_selected_frame
+from ui.state import get_selected_frame, initialize_state
 
 
 def main() -> None:
     st.set_page_config(
         page_title="Video Mask Workflow Shell",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="collapsed",
     )
 
     frame_catalog = get_frame_catalog()
@@ -35,21 +34,23 @@ def main() -> None:
     initialize_state(frame_catalog)
     selected_frame = get_selected_frame(frame_catalog)
 
-    render_sidebar(selected_frame)
     render_workspace_header(selected_frame)
-    render_keyframe_section(frame_catalog)
 
-    selected_frame = get_selected_frame(frame_catalog)
-    render_prompt_panel(frame_catalog, selected_frame)
-    render_preview_panels(selected_frame)
+    operator_column, workspace_column = st.columns([0.9, 2.1], gap="large")
 
-    parameter_column, failure_column = st.columns([1, 1.3], gap="large")
-    with parameter_column:
-        render_parameter_panel()
-    with failure_column:
-        render_failure_panel(failure_cases)
+    with operator_column:
+        render_operator_panel(frame_catalog, selected_frame)
+        selected_frame = get_selected_frame(frame_catalog)
+        render_prompt_panel(frame_catalog, selected_frame)
 
-    render_status_panel(selected_frame, get_runtime_snapshot(), get_runtime_handles())
+    with workspace_column:
+        selected_frame = get_selected_frame(frame_catalog)
+        render_preview_panels(selected_frame)
+        workspace_tabs = st.tabs(["Failure Inspection", "Runtime Status"])
+        with workspace_tabs[0]:
+            render_failure_panel(failure_cases)
+        with workspace_tabs[1]:
+            render_status_panel(selected_frame, get_runtime_snapshot(), get_runtime_handles())
 
 
 def render_workspace_header(selected_frame) -> None:
@@ -64,29 +65,6 @@ def render_workspace_header(selected_frame) -> None:
     metric_columns[1].metric("Frame Label", selected_frame.label)
     metric_columns[2].metric("Prompt Count", str(len(st.session_state.prompt_entries)))
     metric_columns[3].metric("Preview Counter", str(st.session_state.preview_generation))
-
-
-def render_keyframe_section(frame_catalog) -> None:
-    st.subheader("Keyframe Selection")
-    st.caption("Choose the current operator focus frame from the placeholder timeline.")
-
-    options = [frame.index for frame in frame_catalog]
-    st.select_slider(
-        "Keyframe",
-        options=options,
-        key="selected_frame",
-        on_change=sync_selected_frame,
-        format_func=lambda value: next(
-            frame.selector_label() for frame in frame_catalog if frame.index == value
-        ),
-    )
-
-    selected_frame = get_selected_frame(frame_catalog)
-    detail_columns = st.columns(3)
-    detail_columns[0].metric("Current Keyframe", f"{selected_frame.index:04d}")
-    detail_columns[1].metric("Timecode", selected_frame.timecode)
-    detail_columns[2].metric("Frame Label", selected_frame.label)
-    st.caption(selected_frame.note)
 
 
 if __name__ == "__main__":

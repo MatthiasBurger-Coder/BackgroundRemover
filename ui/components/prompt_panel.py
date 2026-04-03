@@ -9,12 +9,10 @@ from ui.state import add_prompt, get_prompt_rows
 
 
 def render_prompt_panel(frame_catalog: list[FrameLabel], selected_frame: FrameLabel) -> None:
-    st.subheader("Prompt Definition")
-    st.caption("Define foreground and background prompt points for the selected keyframe.")
+    with st.container(border=True):
+        st.subheader("Prompt Definition")
+        st.caption("Add foreground and background points for the active keyframe.")
 
-    control_column, table_column = st.columns([1, 1.4], gap="large")
-
-    with control_column:
         with st.form("prompt_entry_form", border=True):
             st.radio(
                 "Prompt mode",
@@ -41,15 +39,11 @@ def render_prompt_panel(frame_catalog: list[FrameLabel], selected_frame: FrameLa
             if submitted:
                 add_prompt(frame_catalog)
 
-        st.write(f"Current keyframe: Frame {selected_frame.index:04d}")
-        st.caption(selected_frame.label)
-        st.caption(selected_frame.note)
+        st.caption(f"Current keyframe: Frame {selected_frame.index:04d} | {selected_frame.label}")
 
-    with table_column:
         rows = get_prompt_rows(st.session_state.prompt_entries)
-        st.markdown("**Current Prompt Entries**")
-        st.caption("Session-local placeholder entries only.")
-        if rows:
-            st.dataframe(rows, width="stretch", hide_index=True)
-        else:
-            st.info("No prompt entries are currently defined in this UI session.")
+        with st.expander(f"Prompt Log ({len(rows)})", expanded=False):
+            if rows:
+                st.dataframe(rows, width="stretch", hide_index=True)
+            else:
+                st.info("No prompt entries are currently defined in this UI session.")

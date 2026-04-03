@@ -12,8 +12,8 @@ def render_status_panel(
     runtime_snapshot: list[dict[str, str]],
     runtime_handles: list[dict[str, str]],
 ) -> None:
-    st.subheader("Runtime, Debug, and Status")
-    st.caption("This section exposes fake operational state for internal workflow validation.")
+    st.subheader("Runtime and Status")
+    st.caption("Compressed operational snapshot for the current UI session.")
 
     metric_columns = st.columns(5)
     metric_columns[0].metric("Selected Frame", f"{selected_frame.index:04d}")
@@ -22,12 +22,8 @@ def render_status_panel(
     metric_columns[3].metric("Video Loaded", "Yes" if st.session_state.video_loaded else "No")
     metric_columns[4].metric("Debug Overlay", "On" if st.session_state.show_debug_overlay else "Off")
 
-    left_column, right_column = st.columns(2, gap="large")
-
-    with left_column:
-        st.markdown("**Runtime Snapshot**")
+    with st.expander("Runtime Snapshot", expanded=False):
         st.dataframe(runtime_snapshot, width="stretch", hide_index=True)
-        st.markdown("**UI State**")
         st.dataframe(
             [
                 {"Field": "Last Action", "Value": st.session_state.last_action},
@@ -39,10 +35,8 @@ def render_status_panel(
             hide_index=True,
         )
 
-    with right_column:
-        st.markdown("**Planned Resource Handles**")
+    with st.expander("Resource Handles and Notes", expanded=False):
         st.dataframe(runtime_handles, width="stretch", hide_index=True)
-        st.markdown("**Extension Notes**")
         st.write("No backend services are called in this prototype.")
         st.write("All values are mock session state or static placeholder metadata.")
         st.write("The layout is prepared for future adapter and service integration.")

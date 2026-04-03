@@ -8,13 +8,15 @@ from ui.mock_data import FrameLabel
 
 
 def render_preview_panels(selected_frame: FrameLabel) -> None:
-    st.subheader("View Workspace")
-    st.caption("The Original Video tab can display the uploaded source video. The remaining views stay placeholder-only.")
+    st.subheader("Workspace")
+    st.caption("Desktop-first workspace with the uploaded source video as the primary anchor.")
 
-    original_tab, mask_tab, preview_tab = st.tabs(["Original Video", "Mask View", "Masked Preview"])
+    _render_original_video_panel(selected_frame)
 
-    with original_tab:
-        _render_original_video_panel(selected_frame)
+    detail_tab, mask_tab, preview_tab = st.tabs(["Source Context", "Mask View", "Masked Preview"])
+
+    with detail_tab:
+        _render_source_context_panel(selected_frame)
 
     with mask_tab:
         _render_view_placeholder(
@@ -57,7 +59,7 @@ def _render_view_placeholder(
 
     with st.container(border=True):
         st.markdown("**Viewport Placeholder**")
-        st.write("No real media is rendered in this prototype.")
+        st.caption("This panel remains placeholder-only in the current prototype.")
         for line in inspection_lines:
             st.write(line)
 
@@ -65,7 +67,7 @@ def _render_view_placeholder(
 def _render_original_video_panel(selected_frame: FrameLabel) -> None:
     viewport_status = "uploaded source available" if st.session_state.video_loaded else "waiting for uploaded source"
     _render_view_placeholder_header(
-        title="Original Video View",
+        title="Original Video",
         summary_lines=[
             f"Active frame: {selected_frame.index:04d}",
             f"Timecode: {selected_frame.timecode}",
@@ -79,11 +81,20 @@ def _render_original_video_panel(selected_frame: FrameLabel) -> None:
         if st.session_state.video_loaded and st.session_state.video_bytes is not None:
             st.caption(f"Uploaded asset: {st.session_state.video_name}")
             st.video(st.session_state.video_bytes, format=st.session_state.video_mime_type)
-            st.write("Operator use: review the uploaded source video while setting prompts and checking frame context.")
+            st.caption("Use the source video as the primary reference while tuning prompts and reviewing frame context.")
         else:
-            st.info("Upload an original video in the sidebar to display it here.")
+            st.info("Upload an original video in the operator column to display it here.")
             st.write("No source video is currently attached to this session.")
-            st.write("Operator use: review the uploaded source video while setting prompts and checking frame context.")
+
+
+def _render_source_context_panel(selected_frame: FrameLabel) -> None:
+    with st.container(border=True):
+        st.markdown("**Source Context**")
+        detail_columns = st.columns(2, gap="large")
+        detail_columns[0].write("Operator use: review the uploaded source video while setting prompts.")
+        detail_columns[0].write("Current frame focus remains conceptual in this prototype.")
+        detail_columns[1].write(f"Frame note: {selected_frame.note}")
+        detail_columns[1].write("Future integration: decoded frame transport and timeline-aware inspection.")
 
 
 def _render_view_placeholder_header(title: str, summary_lines: list[str]) -> None:
