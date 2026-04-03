@@ -2,7 +2,7 @@
 
 from ui.components.failure_panel import render_failure_panel
 from ui.components.parameter_panel import render_parameter_panel
-from ui.components.preview_panels import render_preview_panels
+from ui.components.preview_panels import render_preview_panels, render_workbench_frame_panel
 from ui.components.prompt_panel import render_prompt_panel
 from ui.components.sidebar import render_operator_panel, render_sidebar
 from ui.components.source_context import render_source_context_panel
@@ -19,6 +19,7 @@ __all__ = [
     "render_operator_panel",
     "render_parameter_panel",
     "render_preview_panels",
+    "render_workbench_frame_panel",
     "render_prompt_panel",
     "render_sidebar",
     "render_source_context_panel",

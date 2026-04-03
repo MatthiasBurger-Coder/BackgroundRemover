@@ -8,7 +8,11 @@ import streamlit as st
 
 from ui.components.transport_controls import render_transport_controls
 from ui.components.video_panel import render_workspace_video_panel
-from ui.state import format_timecode, sync_current_frame_index
+from ui.state import (
+    format_timecode,
+    sync_source_timeline_frame_index,
+    sync_source_timeline_widget_state,
+)
 
 
 def render_source_context_panel() -> None:
@@ -79,12 +83,13 @@ def render_source_context_panel() -> None:
 
         render_transport_controls(disabled=st.session_state.video_frame_count <= 0)
         _render_timeline_ruler()
+        sync_source_timeline_widget_state()
         st.slider(
             "Timeline",
             min_value=0,
             max_value=max(st.session_state.video_frame_count - 1, 0),
-            key="current_frame_index",
-            on_change=sync_current_frame_index,
+            key="source_timeline_frame_index",
+            on_change=sync_source_timeline_frame_index,
             disabled=st.session_state.video_frame_count <= 1,
         )
 

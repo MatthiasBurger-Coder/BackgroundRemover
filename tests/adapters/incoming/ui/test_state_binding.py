@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import types
 import unittest
+from contextlib import ExitStack
 from unittest.mock import Mock, patch
 
 import ui.state as ui_state
@@ -40,6 +41,16 @@ class _UploadedFile:
 class StateBindingTests(unittest.TestCase):
     """Protect current-frame loading and workbench binding behavior."""
 
+    def _patch_state_modules(self, session_state: _SessionState) -> ExitStack:
+        session_proxy = types.SimpleNamespace(session_state=session_state)
+        stack = ExitStack()
+        stack.enter_context(patch.object(ui_state.generation_state, "st", session_proxy))
+        stack.enter_context(patch.object(ui_state.playback_state, "st", session_proxy))
+        stack.enter_context(patch.object(ui_state.source_state, "st", session_proxy))
+        stack.enter_context(patch.object(ui_state.video_metadata_state, "st", session_proxy))
+        stack.enter_context(patch.object(ui_state.workbench_state, "st", session_proxy))
+        return stack
+
     def test_ensure_current_frame_loaded_updates_bound_workbench_frame(self) -> None:
         session_state = _SessionState(
             video_loaded=True,
@@ -69,8 +80,8 @@ class StateBindingTests(unittest.TestCase):
             get_video_frame=types.SimpleNamespace(execute=Mock(return_value=fake_frame))
         )
 
-        with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)), patch.object(
-            ui_state,
+        with self._patch_state_modules(session_state), patch.object(
+            ui_state.workbench_state,
             "get_video_asset_backend",
             return_value=fake_backend,
         ):
@@ -107,8 +118,8 @@ class StateBindingTests(unittest.TestCase):
             )
         )
 
-        with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)), patch.object(
-            ui_state,
+        with self._patch_state_modules(session_state), patch.object(
+            ui_state.workbench_state,
             "get_video_asset_backend",
             return_value=fake_backend,
         ):
@@ -168,8 +179,8 @@ class StateBindingTests(unittest.TestCase):
             get_video_asset_metadata=types.SimpleNamespace(execute=metadata_execute)
         )
 
-        with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)), patch.object(
-            ui_state,
+        with self._patch_state_modules(session_state), patch.object(
+            ui_state.source_state,
             "get_video_asset_backend",
             return_value=fake_backend,
         ):
@@ -221,8 +232,8 @@ class StateBindingTests(unittest.TestCase):
             get_video_asset_metadata=types.SimpleNamespace(execute=Mock()),
         )
 
-        with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)), patch.object(
-            ui_state,
+        with self._patch_state_modules(session_state), patch.object(
+            ui_state.source_state,
             "get_video_asset_backend",
             return_value=fake_backend,
         ):
@@ -286,8 +297,8 @@ class StateBindingTests(unittest.TestCase):
             get_video_asset_metadata=types.SimpleNamespace(execute=metadata_execute)
         )
 
-        with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)), patch.object(
-            ui_state,
+        with self._patch_state_modules(session_state), patch.object(
+            ui_state.source_state,
             "get_video_asset_backend",
             return_value=fake_backend,
         ):
@@ -348,8 +359,8 @@ class StateBindingTests(unittest.TestCase):
             get_video_asset_metadata=types.SimpleNamespace(execute=metadata_execute)
         )
 
-        with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)), patch.object(
-            ui_state,
+        with self._patch_state_modules(session_state), patch.object(
+            ui_state.source_state,
             "get_video_asset_backend",
             return_value=fake_backend,
         ):
@@ -396,7 +407,7 @@ class StateBindingTests(unittest.TestCase):
             last_action="Seeded state",
         )
 
-        with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)):
+        with self._patch_state_modules(session_state):
             changed = ui_state.remove_active_video_source()
 
         self.assertTrue(changed)
