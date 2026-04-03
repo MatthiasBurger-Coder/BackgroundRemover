@@ -57,6 +57,10 @@ def render_source_context_panel() -> None:
             "Reference role: inspect original motion and context while transport drives the selected workbench frame."
         ),
         stage_height="clamp(240px, 42vh, 460px)",
+        current_time_seconds=st.session_state.current_frame_timestamp_seconds,
+        playback_running=st.session_state.playback_running,
+        show_controls=False,
+        component_height_px=560,
     )
 
     with st.container(border=True):

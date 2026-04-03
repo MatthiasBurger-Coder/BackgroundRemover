@@ -21,11 +21,11 @@ from ui.components import (
 )
 from ui.mock_data import get_failure_cases, get_runtime_handles, get_runtime_snapshot
 from ui.state import (
-    advance_playback_frame,
     ensure_current_frame_loaded,
     format_timecode,
     get_playback_interval_seconds,
     initialize_state,
+    sync_playback_position,
 )
 
 
@@ -38,6 +38,7 @@ def main() -> None:
 
     failure_cases = get_failure_cases()
     initialize_state()
+    sync_playback_position()
     ensure_current_frame_loaded()
 
     render_workspace_header()
@@ -58,7 +59,6 @@ def main() -> None:
 
     if st.session_state.playback_running:
         time.sleep(get_playback_interval_seconds())
-        advance_playback_frame()
         st.rerun()
 
 

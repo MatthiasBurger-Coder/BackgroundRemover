@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from typing import Any
 
 import streamlit as st
 
+from src.application.adapters.incoming.ui.playback_session import (
+    PlaybackProgress,
+    advance_playback_position,
+    build_navigation_position,
+    start_playback,
+    step_navigation_position,
+    stop_playback,
+)
 from src.application.domain.errors.video_asset_errors import VideoAssetNotFoundError, VideoFrameExtractionError
 from src.application.domain.model.video_asset import VideoAssetMetadata
 from src.application.infrastructure.wiring.video_asset_backend import get_video_asset_backend
@@ -45,6 +54,8 @@ def initialize_state() -> None:
         "current_frame_request_key": None,
         "frame_error_message": None,
         "playback_running": False,
+        "playback_anchor_frame_index": None,
+        "playback_started_at_seconds": None,
         "last_action": "UI session initialized",
     }
     for key, value in defaults.items():
@@ -97,6 +108,28 @@ def register_video_selection(uploaded_file: Any | None) -> bool:
     return True
 
 
+def sync_playback_position(now_seconds: float | None = None) -> None:
+    if not st.session_state.playback_running:
+        return
+
+    progress = advance_playback_position(
+        playback_running=st.session_state.playback_running,
+        current_frame_index=st.session_state.current_frame_index,
+        frame_count=st.session_state.video_frame_count,
+        fps=st.session_state.video_fps,
+        playback_started_at_seconds=st.session_state.playback_started_at_seconds,
+        playback_anchor_frame_index=st.session_state.playback_anchor_frame_index,
+        now_seconds=time.monotonic() if now_seconds is None else now_seconds,
+    )
+    _apply_playback_progress(progress)
+    st.session_state.current_frame_request_key = None
+    st.session_state.frame_error_message = None
+    if progress.playback_running:
+        st.session_state.last_action = f"Playback running at frame {progress.frame_index:04d}"
+    else:
+        st.session_state.last_action = f"Playback paused at frame {progress.frame_index:04d}"
+
+
 def ensure_current_frame_loaded() -> None:
     if not st.session_state.video_loaded or st.session_state.asset_id is None:
         st.session_state.current_frame_image_bytes = None
@@ -121,6 +154,8 @@ def ensure_current_frame_loaded() -> None:
         st.session_state.current_frame_image_mime_type = None
         st.session_state.current_frame_request_key = None
         st.session_state.playback_running = False
+        st.session_state.playback_anchor_frame_index = None
+        st.session_state.playback_started_at_seconds = None
         st.session_state.frame_error_message = str(error)
         st.session_state.last_action = "Frame loading failed"
         return
@@ -147,12 +182,15 @@ def sync_current_frame_index() -> None:
 
 
 def set_current_frame_index(frame_index: int) -> None:
-    clamped_frame_index = clamp_current_frame_index(frame_index)
-    st.session_state.current_frame_index = clamped_frame_index
+    progress = build_navigation_position(
+        frame_index=frame_index,
+        frame_count=st.session_state.video_frame_count,
+        fps=st.session_state.video_fps,
+    )
+    _apply_playback_progress(progress)
     st.session_state.current_frame_request_key = None
-    st.session_state.playback_running = False
     st.session_state.frame_error_message = None
-    st.session_state.last_action = f"Selected frame {clamped_frame_index:04d}"
+    st.session_state.last_action = f"Selected frame {progress.frame_index:04d}"
 
 
 def jump_to_first_frame() -> None:
@@ -166,35 +204,43 @@ def jump_to_last_frame() -> None:
 
 
 def step_current_frame(step: int) -> None:
-    set_current_frame_index(st.session_state.current_frame_index + step)
+    progress = step_navigation_position(
+        current_frame_index=st.session_state.current_frame_index,
+        step=step,
+        frame_count=st.session_state.video_frame_count,
+        fps=st.session_state.video_fps,
+    )
+    _apply_playback_progress(progress)
+    st.session_state.current_frame_request_key = None
+    st.session_state.frame_error_message = None
+    st.session_state.last_action = f"Selected frame {progress.frame_index:04d}"
 
 
 def toggle_playback() -> None:
     if not st.session_state.video_loaded or st.session_state.video_frame_count <= 0:
         return
-    if st.session_state.current_frame_index >= st.session_state.video_frame_count - 1:
-        st.session_state.current_frame_index = 0
-        st.session_state.current_frame_request_key = None
-    st.session_state.playback_running = not st.session_state.playback_running
-    state_label = "Running" if st.session_state.playback_running else "Paused"
-    st.session_state.last_action = f"Playback {state_label.lower()} at frame {st.session_state.current_frame_index:04d}"
 
+    now_seconds = time.monotonic()
+    if st.session_state.playback_running:
+        sync_playback_position(now_seconds=now_seconds)
+        progress = stop_playback(
+            current_frame_index=st.session_state.current_frame_index,
+            frame_count=st.session_state.video_frame_count,
+            fps=st.session_state.video_fps,
+        )
+    else:
+        progress = start_playback(
+            current_frame_index=st.session_state.current_frame_index,
+            frame_count=st.session_state.video_frame_count,
+            fps=st.session_state.video_fps,
+            now_seconds=now_seconds,
+        )
 
-def advance_playback_frame() -> None:
-    if not st.session_state.playback_running:
-        return
-    if st.session_state.video_frame_count <= 0:
-        st.session_state.playback_running = False
-        return
-    if st.session_state.current_frame_index >= st.session_state.video_frame_count - 1:
-        st.session_state.playback_running = False
-        st.session_state.last_action = "Playback reached the final frame"
-        return
-
-    next_frame_index = st.session_state.current_frame_index + 1
-    st.session_state.current_frame_index = next_frame_index
+    _apply_playback_progress(progress)
     st.session_state.current_frame_request_key = None
-    st.session_state.last_action = f"Playback advanced to frame {next_frame_index:04d}"
+    st.session_state.frame_error_message = None
+    state_label = "Running" if progress.playback_running else "Paused"
+    st.session_state.last_action = f"Playback {state_label.lower()} at frame {progress.frame_index:04d}"
 
 
 def get_playback_interval_seconds() -> float:
@@ -271,18 +317,33 @@ def _apply_video_metadata(
     st.session_state.video_width = metadata.width
     st.session_state.video_height = metadata.height
     if reset_prompts:
-        st.session_state.current_frame_index = 0
+        progress = build_navigation_position(
+            frame_index=0,
+            frame_count=metadata.frame_count,
+            fps=metadata.fps,
+        )
         st.session_state.prompt_entries = []
     else:
-        st.session_state.current_frame_index = clamp_current_frame_index(st.session_state.current_frame_index)
-    st.session_state.current_frame_timestamp_seconds = 0.0
+        progress = build_navigation_position(
+            frame_index=st.session_state.current_frame_index,
+            frame_count=metadata.frame_count,
+            fps=metadata.fps,
+        )
+    _apply_playback_progress(progress)
     st.session_state.current_frame_image_bytes = None
     st.session_state.current_frame_image_mime_type = None
     st.session_state.current_frame_width = metadata.width
     st.session_state.current_frame_height = metadata.height
     st.session_state.current_frame_request_key = None
     st.session_state.frame_error_message = None
-    st.session_state.playback_running = False
+
+
+def _apply_playback_progress(progress: PlaybackProgress) -> None:
+    st.session_state.current_frame_index = progress.frame_index
+    st.session_state.current_frame_timestamp_seconds = progress.time_seconds
+    st.session_state.playback_running = progress.playback_running
+    st.session_state.playback_anchor_frame_index = progress.playback_anchor_frame_index
+    st.session_state.playback_started_at_seconds = progress.playback_started_at_seconds
 
 
 def _clear_video_asset_state() -> None:
@@ -306,3 +367,5 @@ def _clear_video_asset_state() -> None:
     st.session_state.current_frame_request_key = None
     st.session_state.frame_error_message = None
     st.session_state.playback_running = False
+    st.session_state.playback_anchor_frame_index = None
+    st.session_state.playback_started_at_seconds = None

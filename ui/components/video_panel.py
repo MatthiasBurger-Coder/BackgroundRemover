@@ -6,6 +6,7 @@ import base64
 from html import escape
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 def render_workspace_video_panel(
@@ -19,15 +20,22 @@ def render_workspace_video_panel(
     empty_lines: list[str],
     panel_note: str | None = None,
     stage_height: str = "clamp(320px, 56vh, 680px)",
+    current_time_seconds: float = 0.0,
+    playback_running: bool = False,
+    show_controls: bool = True,
+    component_height_px: int = 620,
 ) -> None:
     """Render a viewport-aware HTML video panel for uploaded media."""
     video_source = _build_data_url(video_bytes, mime_type or "video/mp4")
-    body_html = _build_video_stage_html(
+    body_html = build_workspace_video_stage_html(
         video_source=video_source,
         mime_type=mime_type or "video/mp4",
         empty_title=empty_title,
         empty_lines=empty_lines,
         stage_height=stage_height,
+        current_time_seconds=current_time_seconds,
+        playback_running=playback_running,
+        show_controls=show_controls,
     )
     footer_parts: list[str] = []
     if asset_name:
@@ -35,14 +43,15 @@ def render_workspace_video_panel(
     if panel_note:
         footer_parts.append(escape(panel_note))
 
-    st.html(
+    components.html(
         _build_panel_html(
             title=title,
             metadata_items=metadata_items,
             body_html=body_html,
             footer_text=" | ".join(footer_parts) if footer_parts else None,
         ),
-        width="stretch",
+        height=component_height_px,
+        scrolling=False,
     )
 
 
@@ -109,13 +118,16 @@ def _build_data_url(payload: bytes | None, mime_type: str) -> str | None:
     return f"data:{mime_type};base64,{encoded}"
 
 
-def _build_video_stage_html(
+def build_workspace_video_stage_html(
     *,
     video_source: str | None,
     mime_type: str,
     empty_title: str,
     empty_lines: list[str],
     stage_height: str,
+    current_time_seconds: float,
+    playback_running: bool,
+    show_controls: bool,
 ) -> str:
     if video_source is None:
         return _build_placeholder_stage_html(
@@ -124,13 +136,44 @@ def _build_video_stage_html(
             stage_height=stage_height,
         )
 
+    controls_attribute = " controls" if show_controls else ""
+    autoplay_attribute = " autoplay muted playsinline" if playback_running else " playsinline"
+    autoplay_state = "true" if playback_running else "false"
+
     return f"""
     <div class="workspace-media-panel__stage" style="height: {escape(stage_height)};">
-      <video class="workspace-media-panel__video" controls preload="metadata">
+      <video
+        id="workspace-media-panel__video"
+        class="workspace-media-panel__video"
+        preload="metadata"{controls_attribute}{autoplay_attribute}
+        data-video-current-time="{current_time_seconds:.3f}"
+        data-video-autoplay="{autoplay_state}">
         <source src="{video_source}" type="{escape(mime_type)}" />
         Your browser does not support the HTML video element.
       </video>
     </div>
+    <script>
+      const videoElement = document.getElementById("workspace-media-panel__video");
+      if (videoElement) {{
+        const targetTime = Number(videoElement.dataset.videoCurrentTime || "0");
+        const shouldAutoplay = videoElement.dataset.videoAutoplay === "true";
+        const syncVideo = () => {{
+          if (!Number.isNaN(targetTime) && Math.abs(videoElement.currentTime - targetTime) > 0.08) {{
+            videoElement.currentTime = targetTime;
+          }}
+          if (shouldAutoplay) {{
+            videoElement.play().catch(() => undefined);
+          }} else {{
+            videoElement.pause();
+          }}
+        }};
+        if (videoElement.readyState >= 1) {{
+          syncVideo();
+        }} else {{
+          videoElement.addEventListener("loadedmetadata", syncVideo, {{ once: true }});
+        }}
+      }}
+    </script>
     """
 
 
