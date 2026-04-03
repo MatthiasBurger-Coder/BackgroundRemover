@@ -10,6 +10,7 @@ from src.application.domain.model.video_asset import VideoAssetMetadata
 
 from ui.state.playback_state import apply_playback_progress, clamp_current_frame_index
 from ui.state.timecode import format_time_seconds_for_frame
+from ui.state.workbench_state import reset_workbench_frame_state, set_workbench_frame_position
 
 LOGGER = logging.getLogger(__name__)
 
@@ -35,35 +36,33 @@ def apply_video_metadata_state(
     st.session_state.video_duration_seconds = metadata.duration_seconds
     st.session_state.video_width = metadata.width
     st.session_state.video_height = metadata.height
-    if reset_prompts:
-        progress = build_navigation_position(
-            frame_index=0,
-            frame_count=metadata.frame_count,
-            fps=metadata.fps,
-        )
-        st.session_state.prompt_entries = []
-    else:
-        progress = build_navigation_position(
-            frame_index=st.session_state.current_frame_index,
-            frame_count=metadata.frame_count,
-            fps=metadata.fps,
-        )
+    progress = build_navigation_position(
+        frame_index=0,
+        frame_count=metadata.frame_count,
+        fps=metadata.fps,
+    )
     apply_playback_progress(progress)
-    st.session_state.current_frame_image_bytes = None
-    st.session_state.current_frame_image_mime_type = None
-    st.session_state.current_frame_width = metadata.width
-    st.session_state.current_frame_height = metadata.height
-    st.session_state.current_frame_request_key = None
-    st.session_state.frame_error_message = None
+    st.session_state.source_timeline_frame_index = progress.frame_index
+    set_workbench_frame_position(
+        frame_index=progress.frame_index,
+        timestamp_seconds=progress.time_seconds,
+        invalidate_cache=True,
+    )
+    st.session_state.workbench_frame_width = metadata.width
+    st.session_state.workbench_frame_height = metadata.height
+    if reset_prompts:
+        st.session_state.prompt_entries = []
 
 
 def refresh_video_metadata_state(*, metadata: VideoAssetMetadata) -> None:
-    """Refresh metadata for the active source asset without resetting navigation state."""
-    previous_frame_index = int(st.session_state.current_frame_index)
+    """Refresh metadata for the active source asset without resetting preview or workbench positions."""
+    previous_playback_frame_index = int(st.session_state.playback_frame_index)
+    previous_workbench_frame_index = int(st.session_state.workbench_frame_index)
     LOGGER.debug(
-        "Refreshing metadata without reset asset_id=%s frame_index=%s playback_running=%s",
+        "Refreshing metadata without reset asset_id=%s playback_frame_index=%s workbench_frame_index=%s playback_running=%s",
         metadata.asset_id,
-        previous_frame_index,
+        previous_playback_frame_index,
+        previous_workbench_frame_index,
         st.session_state.playback_running,
     )
     st.session_state.video_loaded = True
@@ -73,25 +72,36 @@ def refresh_video_metadata_state(*, metadata: VideoAssetMetadata) -> None:
     st.session_state.video_duration_seconds = metadata.duration_seconds
     st.session_state.video_width = metadata.width
     st.session_state.video_height = metadata.height
-    st.session_state.current_frame_width = metadata.width
-    st.session_state.current_frame_height = metadata.height
-    clamped_frame_index = clamp_current_frame_index(previous_frame_index)
-    if clamped_frame_index != previous_frame_index:
+    st.session_state.workbench_frame_width = metadata.width
+    st.session_state.workbench_frame_height = metadata.height
+
+    clamped_playback_frame_index = clamp_current_frame_index(previous_playback_frame_index)
+    if clamped_playback_frame_index != previous_playback_frame_index:
         progress = build_navigation_position(
-            frame_index=clamped_frame_index,
+            frame_index=clamped_playback_frame_index,
             frame_count=metadata.frame_count,
             fps=metadata.fps,
         )
         apply_playback_progress(progress)
-        st.session_state.current_frame_image_bytes = None
-        st.session_state.current_frame_image_mime_type = None
-        st.session_state.current_frame_request_key = None
+        st.session_state.source_timeline_frame_index = progress.frame_index
     elif not st.session_state.playback_running:
-        st.session_state.current_frame_timestamp_seconds = format_time_seconds_for_frame(
-            frame_index=clamped_frame_index,
+        st.session_state.playback_timestamp_seconds = format_time_seconds_for_frame(
+            frame_index=clamped_playback_frame_index,
             fps=metadata.fps,
         )
-    st.session_state.frame_error_message = None
+
+    clamped_workbench_frame_index = clamp_current_frame_index(previous_workbench_frame_index)
+    workbench_timestamp_seconds = format_time_seconds_for_frame(
+        frame_index=clamped_workbench_frame_index,
+        fps=metadata.fps,
+    )
+    set_workbench_frame_position(
+        frame_index=clamped_workbench_frame_index,
+        timestamp_seconds=workbench_timestamp_seconds,
+        invalidate_cache=clamped_workbench_frame_index != previous_workbench_frame_index,
+    )
+    if not st.session_state.video_loaded:
+        reset_workbench_frame_state(reset_position=True)
 
 
 def has_complete_video_metadata() -> bool:

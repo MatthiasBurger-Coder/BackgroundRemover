@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import Any
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -23,9 +22,14 @@ from ui.components import (
     render_workbench_frame_panel,
 )
 from ui.mock_data import get_failure_cases, get_runtime_handles, get_runtime_snapshot
-from ui.projection import RenderProjection, build_render_projection
+from ui.projection import (
+    PreviewProjection,
+    WorkbenchProjection,
+    build_preview_projection,
+    build_workbench_projection,
+)
 from ui.state import (
-    ensure_current_frame_loaded,
+    ensure_workbench_frame_loaded,
     format_timecode,
     get_playback_interval_seconds,
     initialize_state,
@@ -45,14 +49,17 @@ def main() -> None:
 
     failure_cases = get_failure_cases()
     initialize_state()
-    initial_render_projection = build_render_projection()
+    ensure_workbench_frame_loaded()
+    preview_projection = build_preview_projection()
+    workbench_projection = build_workbench_projection()
     LOGGER.debug(
-        "Starting UI render cycle playback_running=%s asset_id=%s frame_index=%s",
+        "Starting UI render cycle playback_running=%s asset_id=%s playback_frame_index=%s workbench_frame_index=%s",
         st.session_state.playback_running,
-        st.session_state.asset_id,
-        st.session_state.current_frame_index,
+        preview_projection.asset_id,
+        preview_projection.playback_frame_index,
+        workbench_projection.workbench_frame_index,
     )
-    frame_slot = render_page_shell(failure_cases, initial_render_projection)
+    render_page_shell(failure_cases, preview_projection, workbench_projection)
     playback_interval_seconds = (
         get_playback_interval_seconds() if st.session_state.playback_running else None
     )
@@ -63,22 +70,20 @@ def main() -> None:
         int(st.session_state.playback_generation),
         playback_interval_seconds,
     )
-    render_live_operator_workspace(
-        frame_slot=frame_slot,
+    render_live_preview_fragment(
         playback_interval_seconds=playback_interval_seconds,
         expected_ui_generation=int(st.session_state.ui_generation),
         expected_playback_generation=int(st.session_state.playback_generation),
     )
 
 
-def render_live_operator_workspace(
+def render_live_preview_fragment(
     *,
-    frame_slot: Any,
     playback_interval_seconds: float | None,
     expected_ui_generation: int,
     expected_playback_generation: int,
 ) -> None:
-    """Render the live workbench frame slot inside a fragment with a dynamic playback cadence."""
+    """Run preview playback timing in a stable fragment without remounting the page shell."""
     LOGGER.debug(
         "Live fragment rerun interval set run_every=%s expected_ui_generation=%s expected_playback_generation=%s",
         playback_interval_seconds,
@@ -86,23 +91,21 @@ def render_live_operator_workspace(
         expected_playback_generation,
     )
     fragment_renderer = st.fragment(
-        _render_live_operator_workspace_body,
+        _render_live_preview_fragment_body,
         run_every=playback_interval_seconds,
     )
     fragment_renderer(
-        frame_slot=frame_slot,
         expected_ui_generation=expected_ui_generation,
         expected_playback_generation=expected_playback_generation,
     )
 
 
-def _render_live_operator_workspace_body(
+def _render_live_preview_fragment_body(
     *,
-    frame_slot: Any,
     expected_ui_generation: int,
     expected_playback_generation: int,
 ) -> None:
-    """Render the dynamic workbench frame from the persistent fragment mount."""
+    """Advance preview playback state without re-rendering the workbench shell."""
     if _fragment_generation_is_stale(
         expected_ui_generation=expected_ui_generation,
         expected_playback_generation=expected_playback_generation,
@@ -136,32 +139,32 @@ def _render_live_operator_workspace_body(
             int(st.session_state.ui_generation),
             int(st.session_state.playback_generation),
         )
-    ensure_current_frame_loaded()
-    render_projection = build_render_projection()
-    render_workbench_frame_slot(frame_slot, render_projection)
+    preview_projection = build_preview_projection()
     LOGGER.debug(
-        "Fragment content render completed asset_id=%s frame_index=%s request_key=%s",
-        render_projection.asset_id,
-        render_projection.frame_index,
-        render_projection.frame_request_key,
+        "Fragment content render completed asset_id=%s playback_frame_index=%s playback_running=%s",
+        preview_projection.asset_id,
+        preview_projection.playback_frame_index,
+        preview_projection.playback_running,
     )
     if playback_running_at_start and not st.session_state.playback_running:
-        LOGGER.debug("Playback paused during fragment render; requesting full app rerun to disable auto-reruns")
+        LOGGER.debug("Playback paused during fragment render; requesting full app rerun to refresh workbench snapshot")
         st.rerun()
 
 
 def render_page_shell(
     failure_cases,
-    render_projection: RenderProjection,
-) -> Any:
-    """Render the stable page shell and return the dynamic workbench frame slot."""
+    preview_projection: PreviewProjection,
+    workbench_projection: WorkbenchProjection,
+) -> None:
+    """Render the stable operator page shell outside the preview fragment."""
     LOGGER.debug(
-        "Rendering stable page shell asset_id=%s frame_index=%s playback_running=%s",
-        render_projection.asset_id,
-        render_projection.frame_index,
-        render_projection.playback_running,
+        "Rendering stable page shell asset_id=%s playback_frame_index=%s workbench_frame_index=%s playback_running=%s",
+        preview_projection.asset_id,
+        preview_projection.playback_frame_index,
+        workbench_projection.workbench_frame_index,
+        preview_projection.playback_running,
     )
-    render_workspace_header(render_projection)
+    render_workspace_header(workbench_projection)
 
     operator_column, workspace_column = st.columns([0.9, 2.1], gap="large")
 
@@ -170,51 +173,39 @@ def render_page_shell(
         render_prompt_panel()
 
     with workspace_column:
-        workbench_host = st.container()
-        with workbench_host:
+        with st.container():
             LOGGER.debug(
-                "Workbench host mounted asset_id=%s playback_running=%s",
-                render_projection.asset_id,
-                render_projection.playback_running,
+                "Workbench host mounted asset_id=%s workbench_frame_index=%s",
+                workbench_projection.asset_id,
+                workbench_projection.workbench_frame_index,
             )
-            frame_slot = st.empty()
-        render_preview_panels(render_projection)
+            render_workbench_frame_panel(workbench_projection)
+        render_preview_panels(preview_projection, workbench_projection)
         workspace_tabs = st.tabs(["Failure Inspection", "Runtime Status"])
         with workspace_tabs[0]:
             render_failure_panel(failure_cases)
         with workspace_tabs[1]:
-            render_status_panel(get_runtime_snapshot(), get_runtime_handles(), render_projection)
+            render_status_panel(
+                get_runtime_snapshot(),
+                get_runtime_handles(),
+                preview_projection,
+                workbench_projection,
+            )
 
     LOGGER.debug("Page shell render completed")
-    return frame_slot
 
 
-def render_workbench_frame_slot(
-    frame_slot: Any,
-    render_projection: RenderProjection,
-) -> None:
-    """Render the dynamic workbench frame into the stable frame slot."""
-    LOGGER.debug(
-        "Frame slot updated asset_id=%s frame_index=%s timecode=%s playback_running=%s request_key=%s",
-        render_projection.asset_id,
-        render_projection.frame_index,
-        render_projection.timestamp_seconds,
-        render_projection.playback_running,
-        render_projection.frame_request_key,
-    )
-    with frame_slot.container():
-        render_workbench_frame_panel(render_projection)
-
-
-def render_workspace_header(render_projection: RenderProjection) -> None:
+def render_workspace_header(workbench_projection: WorkbenchProjection) -> None:
     header_columns = st.columns([1.7, 0.65, 0.8, 0.9], gap="medium")
     header_columns[0].markdown("### Video Mask Creation Workspace")
     header_columns[0].caption(
-        "Backend-assisted single-asset transport with a shared workbench frame binding."
+        "Backend-assisted single-asset transport with a preview player and a fixed workbench snapshot."
     )
-    header_columns[1].markdown(f"**Frame**  \n{render_projection.frame_index:04d}")
-    header_columns[2].markdown(f"**Timecode**  \n{format_timecode(render_projection.timestamp_seconds)}")
-    header_columns[3].markdown(f"**Prompts**  \n{render_projection.prompt_count}")
+    header_columns[1].markdown(f"**Workbench Frame**  \n{workbench_projection.workbench_frame_index:04d}")
+    header_columns[2].markdown(
+        f"**Workbench Timecode**  \n{format_timecode(workbench_projection.workbench_timestamp_seconds)}"
+    )
+    header_columns[3].markdown(f"**Prompts**  \n{workbench_projection.prompt_count}")
 
 
 def _fragment_generation_is_stale(

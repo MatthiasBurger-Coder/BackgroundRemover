@@ -46,7 +46,7 @@ def render_operator_panel() -> None:
 
         action_columns = st.columns(3, gap="small")
         if action_columns[0].button("Refresh Preview", width="stretch", type="primary"):
-            LOGGER.info("Refresh Preview triggered frame_index=%s", st.session_state.current_frame_index)
+            LOGGER.info("Refresh Preview triggered workbench_frame_index=%s", st.session_state.workbench_frame_index)
             refresh_preview()
         if action_columns[1].button("Clear Prompts", width="stretch"):
             LOGGER.info("Clear Prompts triggered prompt_count=%s", len(st.session_state.prompt_entries))
@@ -58,8 +58,8 @@ def render_operator_panel() -> None:
 
         st.markdown("**Current Work Frame**")
         focus_columns = st.columns(2, gap="small")
-        focus_columns[0].metric("Frame", f"{st.session_state.current_frame_index:04d}")
-        focus_columns[1].metric("Timecode", format_timecode(st.session_state.current_frame_timestamp_seconds))
+        focus_columns[0].metric("Frame", f"{st.session_state.workbench_frame_index:04d}")
+        focus_columns[1].metric("Timecode", format_timecode(st.session_state.workbench_timestamp_seconds))
         if st.session_state.video_loaded:
             st.caption(f"Source asset: {st.session_state.video_name}")
         else:

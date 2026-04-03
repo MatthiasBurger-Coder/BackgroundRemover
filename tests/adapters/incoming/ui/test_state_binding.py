@@ -51,19 +51,21 @@ class StateBindingTests(unittest.TestCase):
         stack.enter_context(patch.object(ui_state.workbench_state, "st", session_proxy))
         return stack
 
-    def test_ensure_current_frame_loaded_updates_bound_workbench_frame(self) -> None:
+    def test_ensure_workbench_frame_loaded_updates_bound_workbench_frame(self) -> None:
         session_state = _SessionState(
             video_loaded=True,
             asset_id="asset-1",
             video_frame_count=12,
-            current_frame_index=5,
-            current_frame_timestamp_seconds=0.0,
-            current_frame_image_bytes=None,
-            current_frame_image_mime_type=None,
-            current_frame_width=0,
-            current_frame_height=0,
-            current_frame_request_key=None,
-            frame_error_message=None,
+            playback_frame_index=5,
+            playback_timestamp_seconds=0.0,
+            workbench_frame_index=5,
+            workbench_timestamp_seconds=0.0,
+            workbench_frame_image_bytes=None,
+            workbench_frame_image_mime_type=None,
+            workbench_frame_width=0,
+            workbench_frame_height=0,
+            workbench_frame_request_key=None,
+            workbench_frame_error_message=None,
             playback_running=False,
             playback_anchor_frame_index=None,
             playback_started_at_seconds=None,
@@ -85,29 +87,31 @@ class StateBindingTests(unittest.TestCase):
             "get_video_asset_backend",
             return_value=fake_backend,
         ):
-            ui_state.ensure_current_frame_loaded()
+            ui_state.ensure_workbench_frame_loaded()
 
-        self.assertEqual(session_state.current_frame_index, 5)
-        self.assertAlmostEqual(session_state.current_frame_timestamp_seconds, 0.5)
-        self.assertEqual(session_state.current_frame_image_bytes, b"frame-bytes")
-        self.assertEqual(session_state.current_frame_image_mime_type, "image/png")
-        self.assertEqual(session_state.current_frame_width, 1280)
-        self.assertEqual(session_state.current_frame_height, 720)
-        self.assertIsNone(session_state.frame_error_message)
+        self.assertEqual(session_state.workbench_frame_index, 5)
+        self.assertAlmostEqual(session_state.workbench_timestamp_seconds, 0.5)
+        self.assertEqual(session_state.workbench_frame_image_bytes, b"frame-bytes")
+        self.assertEqual(session_state.workbench_frame_image_mime_type, "image/png")
+        self.assertEqual(session_state.workbench_frame_width, 1280)
+        self.assertEqual(session_state.workbench_frame_height, 720)
+        self.assertIsNone(session_state.workbench_frame_error_message)
 
-    def test_ensure_current_frame_loaded_stops_playback_on_frame_error(self) -> None:
+    def test_ensure_workbench_frame_loaded_stops_playback_on_frame_error(self) -> None:
         session_state = _SessionState(
             video_loaded=True,
             asset_id="asset-1",
             video_frame_count=12,
-            current_frame_index=5,
-            current_frame_timestamp_seconds=0.5,
-            current_frame_image_bytes=b"stale",
-            current_frame_image_mime_type="image/png",
-            current_frame_width=1280,
-            current_frame_height=720,
-            current_frame_request_key=None,
-            frame_error_message=None,
+            playback_frame_index=5,
+            playback_timestamp_seconds=0.5,
+            workbench_frame_index=5,
+            workbench_timestamp_seconds=0.5,
+            workbench_frame_image_bytes=b"stale",
+            workbench_frame_image_mime_type="image/png",
+            workbench_frame_width=1280,
+            workbench_frame_height=720,
+            workbench_frame_request_key=None,
+            workbench_frame_error_message=None,
             playback_running=True,
             playback_anchor_frame_index=5,
             playback_started_at_seconds=10.0,
@@ -123,12 +127,12 @@ class StateBindingTests(unittest.TestCase):
             "get_video_asset_backend",
             return_value=fake_backend,
         ):
-            ui_state.ensure_current_frame_loaded()
+            ui_state.ensure_workbench_frame_loaded()
 
         self.assertFalse(session_state.playback_running)
-        self.assertIsNone(session_state.current_frame_image_bytes)
-        self.assertIsNone(session_state.current_frame_image_mime_type)
-        self.assertEqual(session_state.frame_error_message, "frame decode failed")
+        self.assertIsNone(session_state.workbench_frame_image_bytes)
+        self.assertIsNone(session_state.workbench_frame_image_mime_type)
+        self.assertEqual(session_state.workbench_frame_error_message, "frame decode failed")
         self.assertEqual(session_state.last_action, "Frame loading failed")
 
     def test_register_video_selection_preserves_loaded_frame_on_same_upload_rerun(self) -> None:
@@ -160,14 +164,16 @@ class StateBindingTests(unittest.TestCase):
             video_duration_seconds=5.0,
             video_width=640,
             video_height=360,
-            current_frame_index=12,
-            current_frame_timestamp_seconds=0.5,
-            current_frame_image_bytes=b"frame-bytes",
-            current_frame_image_mime_type="image/png",
-            current_frame_width=640,
-            current_frame_height=360,
-            current_frame_request_key=("asset-1", 12),
-            frame_error_message=None,
+            playback_frame_index=12,
+            playback_timestamp_seconds=0.5,
+            workbench_frame_index=12,
+            workbench_timestamp_seconds=0.5,
+            workbench_frame_image_bytes=b"frame-bytes",
+            workbench_frame_image_mime_type="image/png",
+            workbench_frame_width=640,
+            workbench_frame_height=360,
+            workbench_frame_request_key=("asset-1", 12),
+            workbench_frame_error_message=None,
             playback_running=False,
             playback_anchor_frame_index=None,
             playback_started_at_seconds=None,
@@ -187,10 +193,10 @@ class StateBindingTests(unittest.TestCase):
             changed = ui_state.register_video_selection(uploaded_file)
 
         self.assertFalse(changed)
-        self.assertEqual(session_state.current_frame_index, 12)
-        self.assertAlmostEqual(session_state.current_frame_timestamp_seconds, 0.5)
-        self.assertEqual(session_state.current_frame_image_bytes, b"frame-bytes")
-        self.assertEqual(session_state.current_frame_request_key, ("asset-1", 12))
+        self.assertEqual(session_state.playback_frame_index, 12)
+        self.assertAlmostEqual(session_state.playback_timestamp_seconds, 0.5)
+        self.assertEqual(session_state.workbench_frame_image_bytes, b"frame-bytes")
+        self.assertEqual(session_state.workbench_frame_request_key, ("asset-1", 12))
         self.assertFalse(session_state.playback_running)
         metadata_execute.assert_not_called()
 
@@ -211,14 +217,16 @@ class StateBindingTests(unittest.TestCase):
             video_duration_seconds=5.0,
             video_width=640,
             video_height=360,
-            current_frame_index=12,
-            current_frame_timestamp_seconds=0.5,
-            current_frame_image_bytes=b"frame-bytes",
-            current_frame_image_mime_type="image/png",
-            current_frame_width=640,
-            current_frame_height=360,
-            current_frame_request_key=("asset-1", 12),
-            frame_error_message=None,
+            playback_frame_index=12,
+            playback_timestamp_seconds=0.5,
+            workbench_frame_index=12,
+            workbench_timestamp_seconds=0.5,
+            workbench_frame_image_bytes=b"frame-bytes",
+            workbench_frame_image_mime_type="image/png",
+            workbench_frame_width=640,
+            workbench_frame_height=360,
+            workbench_frame_request_key=("asset-1", 12),
+            workbench_frame_error_message=None,
             playback_running=True,
             playback_anchor_frame_index=10,
             playback_started_at_seconds=123.0,
@@ -278,14 +286,16 @@ class StateBindingTests(unittest.TestCase):
             video_duration_seconds=5.0,
             video_width=640,
             video_height=360,
-            current_frame_index=12,
-            current_frame_timestamp_seconds=0.5,
-            current_frame_image_bytes=b"frame-bytes",
-            current_frame_image_mime_type="image/png",
-            current_frame_width=640,
-            current_frame_height=360,
-            current_frame_request_key=("asset-1", 12),
-            frame_error_message=None,
+            playback_frame_index=12,
+            playback_timestamp_seconds=0.5,
+            workbench_frame_index=12,
+            workbench_timestamp_seconds=0.5,
+            workbench_frame_image_bytes=b"frame-bytes",
+            workbench_frame_image_mime_type="image/png",
+            workbench_frame_width=640,
+            workbench_frame_height=360,
+            workbench_frame_request_key=("asset-1", 12),
+            workbench_frame_error_message=None,
             playback_running=True,
             playback_anchor_frame_index=10,
             playback_started_at_seconds=123.0,
@@ -308,7 +318,7 @@ class StateBindingTests(unittest.TestCase):
         self.assertTrue(session_state.playback_running)
         self.assertEqual(session_state.playback_anchor_frame_index, 10)
         self.assertEqual(session_state.playback_started_at_seconds, 123.0)
-        self.assertEqual(session_state.current_frame_request_key, ("asset-1", 12))
+        self.assertEqual(session_state.workbench_frame_request_key, ("asset-1", 12))
         metadata_execute.assert_not_called()
 
     def test_register_video_selection_refreshes_metadata_for_same_upload_when_cached_state_is_incomplete(self) -> None:
@@ -340,14 +350,16 @@ class StateBindingTests(unittest.TestCase):
             video_duration_seconds=0.0,
             video_width=0,
             video_height=0,
-            current_frame_index=12,
-            current_frame_timestamp_seconds=0.5,
-            current_frame_image_bytes=b"frame-bytes",
-            current_frame_image_mime_type="image/png",
-            current_frame_width=0,
-            current_frame_height=0,
-            current_frame_request_key=("asset-1", 12),
-            frame_error_message=None,
+            playback_frame_index=12,
+            playback_timestamp_seconds=0.5,
+            workbench_frame_index=12,
+            workbench_timestamp_seconds=0.5,
+            workbench_frame_image_bytes=b"frame-bytes",
+            workbench_frame_image_mime_type="image/png",
+            workbench_frame_width=0,
+            workbench_frame_height=0,
+            workbench_frame_request_key=("asset-1", 12),
+            workbench_frame_error_message=None,
             playback_running=False,
             playback_anchor_frame_index=None,
             playback_started_at_seconds=None,
@@ -390,14 +402,16 @@ class StateBindingTests(unittest.TestCase):
             video_duration_seconds=5.0,
             video_width=640,
             video_height=360,
-            current_frame_index=12,
-            current_frame_timestamp_seconds=0.5,
-            current_frame_image_bytes=b"frame-bytes",
-            current_frame_image_mime_type="image/png",
-            current_frame_width=640,
-            current_frame_height=360,
-            current_frame_request_key=("asset-1", 12),
-            frame_error_message=None,
+            playback_frame_index=12,
+            playback_timestamp_seconds=0.5,
+            workbench_frame_index=12,
+            workbench_timestamp_seconds=0.5,
+            workbench_frame_image_bytes=b"frame-bytes",
+            workbench_frame_image_mime_type="image/png",
+            workbench_frame_width=640,
+            workbench_frame_height=360,
+            workbench_frame_request_key=("asset-1", 12),
+            workbench_frame_error_message=None,
             playback_running=True,
             playback_anchor_frame_index=10,
             playback_started_at_seconds=123.0,
@@ -419,6 +433,64 @@ class StateBindingTests(unittest.TestCase):
         self.assertEqual(session_state.ui_generation, 5)
         self.assertEqual(session_state.playback_generation, 10)
         self.assertEqual(session_state.last_action, "Removed source asset")
+
+    def test_sync_playback_position_advances_preview_without_moving_workbench_frame(self) -> None:
+        session_state = _SessionState(
+            video_loaded=True,
+            asset_id="asset-1",
+            active_asset_id="asset-1",
+            video_fps=24.0,
+            video_frame_count=120,
+            playback_frame_index=4,
+            playback_timestamp_seconds=4 / 24.0,
+            workbench_frame_index=2,
+            workbench_timestamp_seconds=2 / 24.0,
+            workbench_frame_request_key=("asset-1", 2),
+            playback_running=True,
+            playback_anchor_frame_index=4,
+            playback_started_at_seconds=100.0,
+            workbench_frame_error_message=None,
+            playback_generation=3,
+            last_action="Seeded state",
+        )
+
+        with self._patch_state_modules(session_state):
+            ui_state.sync_playback_position(now_seconds=100.5)
+
+        self.assertGreater(session_state.playback_frame_index, 4)
+        self.assertGreater(session_state.playback_timestamp_seconds, 4 / 24.0)
+        self.assertEqual(session_state.workbench_frame_index, 2)
+        self.assertAlmostEqual(session_state.workbench_timestamp_seconds, 2 / 24.0)
+        self.assertEqual(session_state.workbench_frame_request_key, ("asset-1", 2))
+
+    def test_toggle_playback_adopts_preview_frame_into_workbench_when_stopping(self) -> None:
+        session_state = _SessionState(
+            video_loaded=True,
+            asset_id="asset-1",
+            active_asset_id="asset-1",
+            video_fps=24.0,
+            video_frame_count=120,
+            playback_frame_index=6,
+            playback_timestamp_seconds=6 / 24.0,
+            workbench_frame_index=2,
+            workbench_timestamp_seconds=2 / 24.0,
+            workbench_frame_request_key=("asset-1", 2),
+            playback_running=True,
+            playback_anchor_frame_index=6,
+            playback_started_at_seconds=100.0,
+            workbench_frame_error_message=None,
+            playback_generation=3,
+            last_action="Seeded state",
+        )
+
+        with self._patch_state_modules(session_state):
+            ui_state.toggle_playback()
+
+        self.assertFalse(session_state.playback_running)
+        self.assertEqual(session_state.workbench_frame_index, session_state.playback_frame_index)
+        self.assertAlmostEqual(session_state.workbench_timestamp_seconds, session_state.playback_timestamp_seconds)
+        self.assertIsNone(session_state.workbench_frame_request_key)
+        self.assertIn("Playback paused", session_state.last_action)
 
 
 if __name__ == "__main__":

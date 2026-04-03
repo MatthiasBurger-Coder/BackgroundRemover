@@ -43,8 +43,8 @@ def render_prompt_panel() -> None:
                 add_prompt()
 
         st.caption(
-            f"Current work frame: Frame {st.session_state.current_frame_index:04d} | "
-            f"{format_timecode(st.session_state.current_frame_timestamp_seconds)}"
+            f"Current work frame: Frame {st.session_state.workbench_frame_index:04d} | "
+            f"{format_timecode(st.session_state.workbench_timestamp_seconds)}"
         )
 
         rows = get_prompt_rows(st.session_state.prompt_entries)
