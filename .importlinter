@@ -1,0 +1,29 @@
+[importlinter]
+root_package = src
+include_external_packages = False
+
+[importlinter:contract:hexagonal_layers]
+name = Hexagonal layers depend inward only
+type = layers
+layers =
+    src.application.infrastructure
+    src.application.adapters
+    src.application.application
+    src.application.ports
+    src.application.domain
+
+[importlinter:contract:incoming_outgoing_adapter_separation]
+name = Incoming adapters must not import outgoing adapters
+type = forbidden
+source_modules =
+    src.application.adapters.incoming
+forbidden_modules =
+    src.application.adapters.outgoing
+
+[importlinter:contract:outgoing_incoming_adapter_separation]
+name = Outgoing adapters must not import incoming adapters
+type = forbidden
+source_modules =
+    src.application.adapters.outgoing
+forbidden_modules =
+    src.application.adapters.incoming

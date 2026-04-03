@@ -102,15 +102,12 @@ def _render_timeline_ruler() -> None:
 
     marker_positions = [0.0, 0.25, 0.5, 0.75, 1.0]
     markers_html = "".join(
-        """
-        <div class="source-timeline__marker" style="left:{left:.2f}%;">
+        f"""
+        <div class="source-timeline__marker" style="left:{position * 100:.2f}%;">
           <span class="source-timeline__tick"></span>
-          <span class="source-timeline__label">{label}</span>
+          <span class="source-timeline__label">{escape(format_timecode(duration_seconds * position))}</span>
         </div>
-        """.format(
-            left=position * 100,
-            label=escape(format_timecode(duration_seconds * position)),
-        )
+        """
         for position in marker_positions
     )
 

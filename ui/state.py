@@ -7,7 +7,6 @@ import time
 from typing import Any
 
 import streamlit as st
-
 from src.application.adapters.incoming.ui.playback_session import (
     PlaybackProgress,
     advance_playback_position,
@@ -16,9 +15,13 @@ from src.application.adapters.incoming.ui.playback_session import (
     step_navigation_position,
     stop_playback,
 )
-from src.application.domain.errors.video_asset_errors import VideoAssetNotFoundError, VideoFrameExtractionError
+from src.application.domain.errors.video_asset_errors import (
+    VideoAssetNotFoundError,
+    VideoFrameExtractionError,
+)
 from src.application.domain.model.video_asset import VideoAssetMetadata
 from src.application.infrastructure.wiring.video_asset_backend import get_video_asset_backend
+
 from ui.mock_data import PromptEntry
 
 

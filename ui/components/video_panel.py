@@ -223,12 +223,12 @@ def _build_panel_html(
     footer_text: str | None,
 ) -> str:
     metadata_html = "".join(
-        """
+        f"""
         <div class="workspace-media-panel__meta-item">
-          <span class="workspace-media-panel__meta-label">{label}</span>
-          <span class="workspace-media-panel__meta-value">{value}</span>
+          <span class="workspace-media-panel__meta-label">{escape(label)}</span>
+          <span class="workspace-media-panel__meta-value">{escape(value)}</span>
         </div>
-        """.format(label=escape(label), value=escape(value))
+        """
         for label, value in metadata_items
     )
     footer_html = (

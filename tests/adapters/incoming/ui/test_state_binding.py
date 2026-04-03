@@ -6,8 +6,8 @@ import types
 import unittest
 from unittest.mock import Mock, patch
 
-from src.application.domain.errors.video_asset_errors import VideoFrameExtractionError
 import ui.state as ui_state
+from src.application.domain.errors.video_asset_errors import VideoFrameExtractionError
 
 
 class _SessionState(dict):

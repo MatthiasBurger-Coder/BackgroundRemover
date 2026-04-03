@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import unittest
+from pathlib import Path
 
-from src.application.adapters.outgoing.video.ffmpeg_video_asset_adapter import FfmpegVideoAssetAdapter
-
+from src.application.adapters.outgoing.video.ffmpeg_video_asset_adapter import (
+    FfmpegVideoAssetAdapter,
+)
 
 TEST_VIDEO_PATH = Path(__file__).resolve().parents[3] / "resources" / "miki.mp4"
 

@@ -5,12 +5,11 @@ from __future__ import annotations
 import unittest
 
 from src.application.adapters.incoming.ui.playback_session import (
-    PlaybackProgress,
     advance_playback_position,
     build_navigation_position,
     start_playback,
-    stop_playback,
     step_navigation_position,
+    stop_playback,
 )
 
 

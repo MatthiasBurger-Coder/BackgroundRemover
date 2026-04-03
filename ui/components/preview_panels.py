@@ -5,7 +5,10 @@ from __future__ import annotations
 import streamlit as st
 
 from ui.components.source_context import render_source_context_panel
-from ui.components.video_panel import render_workspace_image_panel, render_workspace_placeholder_panel
+from ui.components.video_panel import (
+    render_workspace_image_panel,
+    render_workspace_placeholder_panel,
+)
 from ui.state import format_timecode
 
 

@@ -12,6 +12,7 @@ import uuid
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
+from typing import Any, cast
 
 from src.application.domain.errors.video_asset_errors import (
     VideoAssetNotFoundError,
@@ -32,10 +33,12 @@ class FfmpegVideoAssetAdapter:
     """Store uploaded videos in a temp directory and decode frames with FFmpeg tools."""
 
     def __init__(self) -> None:
-        self._ffmpeg_path = shutil.which("ffmpeg")
-        self._ffprobe_path = shutil.which("ffprobe")
-        if self._ffmpeg_path is None or self._ffprobe_path is None:
+        ffmpeg_path = shutil.which("ffmpeg")
+        ffprobe_path = shutil.which("ffprobe")
+        if ffmpeg_path is None or ffprobe_path is None:
             raise RuntimeError("ffmpeg and ffprobe must be available on PATH for video transport support.")
+        self._ffmpeg_path = ffmpeg_path
+        self._ffprobe_path = ffprobe_path
 
         self._storage_root = Path(tempfile.mkdtemp(prefix="background-remover-assets-"))
         self._assets: dict[str, _RegisteredVideoAsset] = {}
@@ -103,11 +106,11 @@ class FfmpegVideoAssetAdapter:
             )
 
         try:
-            payload = json.loads(completed.stdout)
+            payload = cast(dict[str, Any], json.loads(completed.stdout))
         except json.JSONDecodeError as error:
             raise VideoProbeError(f"Invalid ffprobe output for uploaded asset {filename}.") from error
 
-        streams = payload.get("streams", [])
+        streams = cast(list[dict[str, Any]], payload.get("streams", []))
         video_stream = next((stream for stream in streams if stream.get("codec_type") == "video"), None)
         if video_stream is None:
             raise VideoProbeError(f"No video stream found in uploaded asset {filename}.")
@@ -134,7 +137,7 @@ class FfmpegVideoAssetAdapter:
             height=height,
         )
 
-    def _parse_fps(self, video_stream: dict[str, object]) -> float:
+    def _parse_fps(self, video_stream: dict[str, Any]) -> float:
         rate_value = str(video_stream.get("avg_frame_rate") or video_stream.get("r_frame_rate") or "0/1")
         try:
             fps = float(Fraction(rate_value))
@@ -142,8 +145,8 @@ class FfmpegVideoAssetAdapter:
             fps = 0.0
         return fps
 
-    def _parse_duration_seconds(self, payload: dict[str, object], video_stream: dict[str, object]) -> float:
-        format_section = payload.get("format", {})
+    def _parse_duration_seconds(self, payload: dict[str, Any], video_stream: dict[str, Any]) -> float:
+        format_section = cast(dict[str, Any], payload.get("format", {}))
         raw_duration = (
             video_stream.get("duration")
             or format_section.get("duration")
@@ -155,11 +158,11 @@ class FfmpegVideoAssetAdapter:
             duration_seconds = 0.0
         return max(duration_seconds, 0.0)
 
-    def _parse_frame_count(self, video_stream: dict[str, object], duration_seconds: float, fps: float) -> int:
+    def _parse_frame_count(self, video_stream: dict[str, Any], duration_seconds: float, fps: float) -> int:
         raw_frame_count = video_stream.get("nb_frames") or video_stream.get("nb_read_frames")
         try:
             if raw_frame_count not in {None, "N/A"}:
-                return max(int(raw_frame_count), 0)
+                return max(int(cast(str, raw_frame_count)), 0)
         except (TypeError, ValueError):
             pass
 
