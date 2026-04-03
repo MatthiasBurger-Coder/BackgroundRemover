@@ -24,6 +24,7 @@ from ui.mock_data import get_failure_cases, get_runtime_handles, get_runtime_sna
 from ui.state import (
     ensure_current_frame_loaded,
     format_timecode,
+    get_playback_interval_seconds,
     initialize_state,
     sync_playback_position,
 )
@@ -47,24 +48,43 @@ def main() -> None:
         st.session_state.asset_id,
         st.session_state.current_frame_index,
     )
-    if st.session_state.playback_running:
-        render_live_operator_workspace(
-            failure_cases,
-            expected_ui_generation=int(st.session_state.ui_generation),
-            expected_playback_generation=int(st.session_state.playback_generation),
-        )
-    else:
-        render_operator_workspace(failure_cases)
+    playback_interval_seconds = (
+        get_playback_interval_seconds() if st.session_state.playback_running else None
+    )
+    render_live_operator_workspace(
+        failure_cases,
+        playback_interval_seconds=playback_interval_seconds,
+        expected_ui_generation=int(st.session_state.ui_generation),
+        expected_playback_generation=int(st.session_state.playback_generation),
+    )
 
 
-@st.fragment(run_every=0.25)
 def render_live_operator_workspace(
+    failure_cases,
+    *,
+    playback_interval_seconds: float | None,
+    expected_ui_generation: int,
+    expected_playback_generation: int,
+) -> None:
+    """Render the operator workspace inside a fragment with a dynamic playback cadence."""
+    fragment_renderer = st.fragment(
+        _render_live_operator_workspace_body,
+        run_every=playback_interval_seconds,
+    )
+    fragment_renderer(
+        failure_cases,
+        expected_ui_generation=expected_ui_generation,
+        expected_playback_generation=expected_playback_generation,
+    )
+
+
+def _render_live_operator_workspace_body(
     failure_cases,
     *,
     expected_ui_generation: int,
     expected_playback_generation: int,
 ) -> None:
-    """Render the operator workspace with a fragment-scoped playback cadence while playing."""
+    """Render the operator workspace body from the persistent fragment mount."""
     if _fragment_generation_is_stale(
         expected_ui_generation=expected_ui_generation,
         expected_playback_generation=expected_playback_generation,
@@ -76,31 +96,19 @@ def render_live_operator_workspace(
             expected_playback_generation,
             int(st.session_state.playback_generation),
         )
-        st.rerun(scope="app")
-    if not st.session_state.playback_running:
-        LOGGER.debug("Stopping live operator workspace fragment because playback is paused")
-        st.rerun(scope="app")
+        return
+
+    playback_running_at_start = bool(st.session_state.playback_running)
     LOGGER.debug(
-        "Rendering live operator workspace fragment ui_generation=%s playback_generation=%s",
+        "Rendering live operator workspace fragment ui_generation=%s playback_generation=%s playback_running=%s",
         int(st.session_state.ui_generation),
         int(st.session_state.playback_generation),
+        playback_running_at_start,
     )
     render_operator_workspace(failure_cases)
-    if _fragment_generation_is_stale(
-        expected_ui_generation=expected_ui_generation,
-        expected_playback_generation=expected_playback_generation,
-    ):
-        LOGGER.info(
-            "Stale fragment ignored after render expected_ui_generation=%s current_ui_generation=%s expected_playback_generation=%s current_playback_generation=%s",
-            expected_ui_generation,
-            int(st.session_state.ui_generation),
-            expected_playback_generation,
-            int(st.session_state.playback_generation),
-        )
-        st.rerun(scope="app")
-    if not st.session_state.playback_running:
-        LOGGER.debug("Stopping live operator workspace fragment after playback state changed")
-        st.rerun(scope="app")
+    if playback_running_at_start and not st.session_state.playback_running:
+        LOGGER.debug("Playback paused during fragment render; requesting full app rerun to disable auto-reruns")
+        st.rerun()
 
 
 def render_operator_workspace(failure_cases) -> None:

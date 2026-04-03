@@ -80,77 +80,157 @@ class AppPlaybackFlowTests(unittest.TestCase):
 class LiveOperatorWorkspaceFragmentTests(unittest.TestCase):
     """Protect the live fragment body against paused-state hot-loop reruns."""
 
-    def test_live_fragment_requests_full_app_rerun_when_playback_is_paused(self) -> None:
+    def test_main_mounts_fragment_with_disabled_auto_rerun_when_playback_is_paused(self) -> None:
+        session_state = types.SimpleNamespace(
+            playback_running=False,
+            asset_id="asset-1",
+            current_frame_index=0,
+            ui_generation=3,
+            playback_generation=8,
+        )
+        fake_st = types.SimpleNamespace(session_state=session_state, set_page_config=Mock())
+
+        with (
+            patch.object(ui_app, "st", fake_st),
+            patch.object(ui_app, "configure_logging"),
+            patch.object(ui_app, "initialize_state"),
+            patch.object(ui_app, "get_failure_cases", return_value=["failure"]),
+            patch.object(ui_app, "render_live_operator_workspace") as render_fragment,
+            patch.object(ui_app, "render_operator_workspace") as render_workspace,
+        ):
+            ui_app.main()
+
+        render_fragment.assert_called_once_with(
+            ["failure"],
+            playback_interval_seconds=None,
+            expected_ui_generation=3,
+            expected_playback_generation=8,
+        )
+        render_workspace.assert_not_called()
+
+    def test_live_fragment_uses_playback_interval_when_playback_is_running(self) -> None:
+        session_state = types.SimpleNamespace(
+            playback_running=True,
+            asset_id="asset-1",
+            current_frame_index=0,
+            ui_generation=3,
+            playback_generation=8,
+        )
+        fake_st = types.SimpleNamespace(session_state=session_state, set_page_config=Mock())
+
+        with (
+            patch.object(ui_app, "st", fake_st),
+            patch.object(ui_app, "configure_logging"),
+            patch.object(ui_app, "initialize_state"),
+            patch.object(ui_app, "get_failure_cases", return_value=["failure"]),
+            patch.object(ui_app, "get_playback_interval_seconds", return_value=0.25),
+            patch.object(ui_app, "render_live_operator_workspace") as render_fragment,
+        ):
+            ui_app.main()
+
+        render_fragment.assert_called_once_with(
+            ["failure"],
+            playback_interval_seconds=0.25,
+            expected_ui_generation=3,
+            expected_playback_generation=8,
+        )
+
+    def test_live_fragment_body_renders_workspace_when_playback_is_paused(self) -> None:
         session_state = types.SimpleNamespace(
             playback_running=False,
             ui_generation=3,
             playback_generation=8,
         )
-
-        class _StopFragment(Exception):
-            pass
-
-        rerun = Mock(side_effect=_StopFragment)
+        rerun = Mock()
         fake_st = types.SimpleNamespace(session_state=session_state, rerun=rerun)
 
-        with (
-            patch.object(ui_app, "st", fake_st),
-            patch.object(ui_app, "render_operator_workspace") as render_workspace,
-            self.assertRaises(_StopFragment),
-        ):
-            ui_app.render_live_operator_workspace.__wrapped__(
+        with patch.object(ui_app, "st", fake_st), patch.object(ui_app, "render_operator_workspace") as render_workspace:
+            ui_app._render_live_operator_workspace_body(
                 [],
                 expected_ui_generation=3,
                 expected_playback_generation=8,
             )
 
-        rerun.assert_called_once_with(scope="app")
-        render_workspace.assert_not_called()
+        rerun.assert_not_called()
+        render_workspace.assert_called_once_with([])
 
-    def test_live_fragment_renders_workspace_while_playback_is_running(self) -> None:
+    def test_live_fragment_configures_dynamic_run_every(self) -> None:
         session_state = types.SimpleNamespace(
             playback_running=True,
             ui_generation=3,
             playback_generation=8,
         )
-        fake_st = types.SimpleNamespace(session_state=session_state, rerun=Mock())
+        run_every_values: list[float | None] = []
 
-        with patch.object(ui_app, "st", fake_st), patch.object(ui_app, "render_operator_workspace") as render_workspace:
-            ui_app.render_live_operator_workspace.__wrapped__(
+        def fake_fragment(func=None, *, run_every=None):
+            run_every_values.append(run_every)
+
+            def wrapped(*args, **kwargs):
+                return func(*args, **kwargs)
+
+            return wrapped
+
+        fake_st = types.SimpleNamespace(session_state=session_state, fragment=fake_fragment, rerun=Mock())
+
+        with patch.object(ui_app, "st", fake_st), patch.object(ui_app, "_render_live_operator_workspace_body") as body:
+            ui_app.render_live_operator_workspace(
                 ["failure"],
+                playback_interval_seconds=0.25,
                 expected_ui_generation=3,
                 expected_playback_generation=8,
             )
 
-        fake_st.rerun.assert_not_called()
-        render_workspace.assert_called_once_with(["failure"])
+        self.assertEqual(run_every_values, [0.25])
+        body.assert_called_once_with(
+            ["failure"],
+            expected_ui_generation=3,
+            expected_playback_generation=8,
+        )
 
-    def test_live_fragment_requests_full_app_rerun_when_generation_is_stale(self) -> None:
+    def test_live_fragment_body_ignores_stale_generation_without_rerun(self) -> None:
         session_state = types.SimpleNamespace(
             playback_running=True,
             ui_generation=7,
             playback_generation=12,
         )
-
-        class _StopFragment(Exception):
-            pass
-
-        rerun = Mock(side_effect=_StopFragment)
+        rerun = Mock()
         fake_st = types.SimpleNamespace(session_state=session_state, rerun=rerun)
 
-        with (
-            patch.object(ui_app, "st", fake_st),
-            patch.object(ui_app, "render_operator_workspace") as render_workspace,
-            self.assertRaises(_StopFragment),
-        ):
-            ui_app.render_live_operator_workspace.__wrapped__(
+        with patch.object(ui_app, "st", fake_st), patch.object(ui_app, "render_operator_workspace") as render_workspace:
+            ui_app._render_live_operator_workspace_body(
                 [],
                 expected_ui_generation=6,
                 expected_playback_generation=11,
             )
 
-        rerun.assert_called_once_with(scope="app")
+        rerun.assert_not_called()
         render_workspace.assert_not_called()
+
+    def test_live_fragment_body_requests_app_rerun_when_playback_stops_during_render(self) -> None:
+        session_state = types.SimpleNamespace(
+            playback_running=True,
+            ui_generation=3,
+            playback_generation=8,
+        )
+        rerun = Mock()
+        fake_st = types.SimpleNamespace(session_state=session_state, rerun=rerun)
+
+        def stop_playback(_failure_cases) -> None:
+            session_state.playback_running = False
+
+        with patch.object(ui_app, "st", fake_st), patch.object(
+            ui_app,
+            "render_operator_workspace",
+            side_effect=stop_playback,
+        ) as render_workspace:
+            ui_app._render_live_operator_workspace_body(
+                [],
+                expected_ui_generation=3,
+                expected_playback_generation=8,
+            )
+
+        rerun.assert_called_once_with()
+        render_workspace.assert_called_once_with([])
 
 
 class OperatorPanelSourceLifecycleTests(unittest.TestCase):
