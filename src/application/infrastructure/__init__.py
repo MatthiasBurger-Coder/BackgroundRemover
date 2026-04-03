@@ -1,1 +1,1 @@
-"""Infrastructure package."""
+"""Infrastructure layer exports."""

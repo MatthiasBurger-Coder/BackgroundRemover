@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+
 import streamlit as st
 
 from ui.mock_data import get_preview_metadata, get_workspace_info
 from ui.state import clear_prompts, format_timecode, refresh_preview, register_video_selection
+
+LOGGER = logging.getLogger(__name__)
 
 
 def render_operator_panel() -> None:
@@ -18,13 +22,25 @@ def render_operator_panel() -> None:
             type=["mp4", "mov", "mkv", "avi"],
             help="Upload a source video to register a temporary backend-managed asset for transport and workbench binding.",
         )
+        LOGGER.debug(
+            "Rendering operator panel uploaded_file_present=%s active_asset=%s",
+            uploaded_file is not None,
+            st.session_state.asset_id,
+        )
         if register_video_selection(uploaded_file):
+            LOGGER.info(
+                "Operator panel registered or cleared source selection asset_id=%s video_name=%s",
+                st.session_state.asset_id,
+                st.session_state.video_name,
+            )
             st.rerun()
 
         action_columns = st.columns(2, gap="small")
         if action_columns[0].button("Refresh Preview", width="stretch", type="primary"):
+            LOGGER.info("Refresh Preview triggered frame_index=%s", st.session_state.current_frame_index)
             refresh_preview()
         if action_columns[1].button("Clear Prompts", width="stretch"):
+            LOGGER.info("Clear Prompts triggered prompt_count=%s", len(st.session_state.prompt_entries))
             clear_prompts()
 
         st.markdown("**Current Work Frame**")

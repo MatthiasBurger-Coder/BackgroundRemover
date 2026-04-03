@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import logging
 import math
 import shutil
 import subprocess
@@ -20,6 +21,8 @@ from src.application.domain.errors.video_asset_errors import (
     VideoProbeError,
 )
 from src.application.domain.model.video_asset import VideoAssetMetadata, VideoFrame
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -43,6 +46,7 @@ class FfmpegVideoAssetAdapter:
         self._storage_root = Path(tempfile.mkdtemp(prefix="background-remover-assets-"))
         self._assets: dict[str, _RegisteredVideoAsset] = {}
         atexit.register(self._cleanup_storage)
+        LOGGER.info("Initialized FFmpeg video asset adapter storage_root=%s", self._storage_root)
 
     def register_video_asset(
         self,
@@ -54,28 +58,44 @@ class FfmpegVideoAssetAdapter:
         asset_id = uuid.uuid4().hex
         file_path = self._storage_root / f"{asset_id}{Path(filename).suffix or '.mp4'}"
         file_path.write_bytes(video_bytes)
+        LOGGER.info("Registering video asset asset_id=%s filename=%s bytes=%s", asset_id, filename, len(video_bytes))
         metadata = self._probe_metadata(asset_id=asset_id, filename=filename, file_path=file_path)
         self._assets[asset_id] = _RegisteredVideoAsset(
             metadata=metadata,
             mime_type=mime_type,
             file_path=file_path,
         )
+        LOGGER.debug(
+            "Registered video asset asset_id=%s frame_count=%s fps=%.3f resolution=%sx%s",
+            asset_id,
+            metadata.frame_count,
+            metadata.fps,
+            metadata.width,
+            metadata.height,
+        )
         return metadata
 
     def get_video_metadata(self, asset_id: str) -> VideoAssetMetadata:
+        LOGGER.debug("Fetching video metadata asset_id=%s", asset_id)
         return self._get_registered_asset(asset_id).metadata
 
     def get_video_frame(self, asset_id: str, frame_index: int) -> VideoFrame:
         asset = self._get_registered_asset(asset_id)
         metadata = asset.metadata
         clamped_frame_index = metadata.clamped_frame_index(frame_index)
+        LOGGER.debug(
+            "Fetching video frame asset_id=%s requested_frame_index=%s clamped_frame_index=%s",
+            asset_id,
+            frame_index,
+            clamped_frame_index,
+        )
         image_bytes, resolved_frame_index = self._extract_frame_png(
             file_path=asset.file_path,
             requested_frame_index=clamped_frame_index,
             asset_id=asset_id,
         )
 
-        return VideoFrame(
+        frame = VideoFrame(
             asset_id=asset_id,
             frame_index=resolved_frame_index,
             timestamp_seconds=resolved_frame_index / metadata.fps if metadata.fps > 0 else 0.0,
@@ -84,6 +104,14 @@ class FfmpegVideoAssetAdapter:
             height=metadata.height,
             image_bytes=image_bytes,
         )
+        LOGGER.debug(
+            "Resolved video frame asset_id=%s frame_index=%s timestamp=%.3f bytes=%s",
+            asset_id,
+            resolved_frame_index,
+            resolved_frame_index / metadata.fps if metadata.fps > 0 else 0.0,
+            len(image_bytes),
+        )
+        return frame
 
     def _probe_metadata(self, *, asset_id: str, filename: str, file_path: Path) -> VideoAssetMetadata:
         command = [
@@ -101,6 +129,7 @@ class FfmpegVideoAssetAdapter:
         ]
         completed = subprocess.run(command, capture_output=True, text=True, check=False)
         if completed.returncode != 0:
+            LOGGER.error("ffprobe failed asset_id=%s filename=%s stderr=%s", asset_id, filename, completed.stderr.strip())
             raise VideoProbeError(
                 f"ffprobe failed for uploaded asset {filename}: {completed.stderr.strip()}"
             )
@@ -127,6 +156,16 @@ class FfmpegVideoAssetAdapter:
                 f"fps={fps}, frame_count={frame_count}, size={width}x{height}"
             )
 
+        LOGGER.debug(
+            "Probed metadata asset_id=%s filename=%s fps=%.3f frame_count=%s duration=%.3f resolution=%sx%s",
+            asset_id,
+            filename,
+            fps,
+            frame_count,
+            duration_seconds,
+            width,
+            height,
+        )
         return VideoAssetMetadata(
             asset_id=asset_id,
             filename=filename,
@@ -173,6 +212,7 @@ class FfmpegVideoAssetAdapter:
     def _get_registered_asset(self, asset_id: str) -> _RegisteredVideoAsset:
         asset = self._assets.get(asset_id)
         if asset is None:
+            LOGGER.error("Unknown video asset requested asset_id=%s", asset_id)
             raise VideoAssetNotFoundError(f"Unknown video asset: {asset_id}")
         return asset
 
@@ -191,6 +231,12 @@ class FfmpegVideoAssetAdapter:
             )
 
         for candidate_frame_index in frame_candidates:
+            LOGGER.debug(
+                "Attempting frame extraction asset_id=%s requested_frame_index=%s candidate_frame_index=%s",
+                asset_id,
+                requested_frame_index,
+                candidate_frame_index,
+            )
             command = [
                 self._ffmpeg_path,
                 "-hide_banner",
@@ -212,12 +258,25 @@ class FfmpegVideoAssetAdapter:
             ]
             completed = subprocess.run(command, capture_output=True, check=False)
             if completed.returncode == 0 and completed.stdout:
+                LOGGER.debug(
+                    "Extracted frame asset_id=%s candidate_frame_index=%s bytes=%s",
+                    asset_id,
+                    candidate_frame_index,
+                    len(completed.stdout),
+                )
                 return completed.stdout, candidate_frame_index
 
+        LOGGER.error(
+            "Frame extraction failed asset_id=%s requested_frame_index=%s candidate_window=%s",
+            asset_id,
+            requested_frame_index,
+            frame_candidates,
+        )
         raise VideoFrameExtractionError(
             f"Failed to extract frame {requested_frame_index} from asset {asset_id}: "
             "ffmpeg returned no image output for the requested frame window."
         )
 
     def _cleanup_storage(self) -> None:
+        LOGGER.debug("Cleaning up FFmpeg adapter storage_root=%s", self._storage_root)
         shutil.rmtree(self._storage_root, ignore_errors=True)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 from typing import Any
 
@@ -23,6 +24,8 @@ from src.application.domain.model.video_asset import VideoAssetMetadata
 from src.application.infrastructure.wiring.video_asset_backend import get_video_asset_backend
 
 from ui.mock_data import PromptEntry
+
+LOGGER = logging.getLogger(__name__)
 
 
 def initialize_state() -> None:
@@ -64,11 +67,13 @@ def initialize_state() -> None:
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+    LOGGER.debug("Session state initialized video_loaded=%s asset_id=%s", st.session_state.video_loaded, st.session_state.asset_id)
 
 
 def register_video_selection(uploaded_file: Any | None) -> bool:
     if uploaded_file is None:
         if st.session_state.video_loaded:
+            LOGGER.info("Clearing current source selection asset_id=%s video_name=%s", st.session_state.asset_id, st.session_state.video_name)
             _clear_video_asset_state()
             st.session_state.last_action = "Cleared source asset selection"
             return True
@@ -83,6 +88,11 @@ def register_video_selection(uploaded_file: Any | None) -> bool:
         and st.session_state.asset_id is not None
     ):
         try:
+            LOGGER.debug(
+                "Refreshing existing source selection asset_id=%s video_name=%s",
+                st.session_state.asset_id,
+                uploaded_file.name,
+            )
             metadata = backend.get_video_asset_metadata.execute(st.session_state.asset_id)
             _refresh_video_metadata(
                 metadata=metadata,
@@ -92,6 +102,11 @@ def register_video_selection(uploaded_file: Any | None) -> bool:
             )
             return False
         except VideoAssetNotFoundError:
+            LOGGER.warning(
+                "Stored asset metadata missing; re-registering uploaded file video_name=%s asset_id=%s",
+                uploaded_file.name,
+                st.session_state.asset_id,
+            )
             pass
 
     metadata = backend.register_video_asset.execute(
@@ -106,6 +121,13 @@ def register_video_selection(uploaded_file: Any | None) -> bool:
         upload_signature=upload_signature,
         reset_prompts=True,
     )
+    LOGGER.info(
+        "Registered new source asset asset_id=%s video_name=%s frame_count=%s fps=%.3f",
+        metadata.asset_id,
+        metadata.filename,
+        metadata.frame_count,
+        metadata.fps,
+    )
     st.session_state.last_action = f"Registered backend source asset {metadata.filename}"
     return True
 
@@ -114,6 +136,7 @@ def sync_playback_position(now_seconds: float | None = None) -> None:
     if not st.session_state.playback_running:
         return
 
+    previous_frame_index = int(st.session_state.current_frame_index)
     progress = advance_playback_position(
         playback_running=st.session_state.playback_running,
         current_frame_index=st.session_state.current_frame_index,
@@ -126,6 +149,12 @@ def sync_playback_position(now_seconds: float | None = None) -> None:
     _apply_playback_progress(progress)
     st.session_state.current_frame_request_key = None
     st.session_state.frame_error_message = None
+    LOGGER.debug(
+        "Synchronized playback frame_index=%s previous_frame_index=%s playback_running=%s",
+        progress.frame_index,
+        previous_frame_index,
+        progress.playback_running,
+    )
     if progress.playback_running:
         st.session_state.last_action = f"Playback running at frame {progress.frame_index:04d}"
     else:
@@ -143,10 +172,12 @@ def ensure_current_frame_loaded() -> None:
     frame_index = clamp_current_frame_index(st.session_state.current_frame_index)
     request_key = (st.session_state.asset_id, frame_index)
     if request_key == st.session_state.current_frame_request_key and st.session_state.current_frame_image_bytes:
+        LOGGER.debug("Skipping frame reload for cached request asset_id=%s frame_index=%s", st.session_state.asset_id, frame_index)
         return
 
     backend = get_video_asset_backend()
     try:
+        LOGGER.debug("Loading frame asset_id=%s frame_index=%s", st.session_state.asset_id, frame_index)
         frame = backend.get_video_frame.execute(
             asset_id=st.session_state.asset_id,
             frame_index=frame_index,
@@ -160,6 +191,7 @@ def ensure_current_frame_loaded() -> None:
         st.session_state.playback_started_at_seconds = None
         st.session_state.frame_error_message = str(error)
         st.session_state.last_action = "Frame loading failed"
+        LOGGER.exception("Frame loading failed asset_id=%s frame_index=%s", st.session_state.asset_id, frame_index)
         return
 
     st.session_state.current_frame_index = frame.frame_index
@@ -170,6 +202,14 @@ def ensure_current_frame_loaded() -> None:
     st.session_state.current_frame_height = frame.height
     st.session_state.current_frame_request_key = request_key
     st.session_state.frame_error_message = None
+    LOGGER.debug(
+        "Loaded frame asset_id=%s resolved_frame_index=%s timestamp=%.3f size=%sx%s",
+        st.session_state.asset_id,
+        frame.frame_index,
+        frame.timestamp_seconds,
+        frame.width,
+        frame.height,
+    )
 
 
 def clamp_current_frame_index(frame_index: int) -> int:
@@ -192,6 +232,7 @@ def set_current_frame_index(frame_index: int) -> None:
     _apply_playback_progress(progress)
     st.session_state.current_frame_request_key = None
     st.session_state.frame_error_message = None
+    LOGGER.info("Selected frame frame_index=%s time_seconds=%.3f", progress.frame_index, progress.time_seconds)
     st.session_state.last_action = f"Selected frame {progress.frame_index:04d}"
 
 
@@ -220,6 +261,7 @@ def step_current_frame(step: int) -> None:
 
 def toggle_playback() -> None:
     if not st.session_state.video_loaded or st.session_state.video_frame_count <= 0:
+        LOGGER.warning("Ignoring playback toggle without active video")
         return
 
     now_seconds = time.monotonic()
@@ -242,6 +284,13 @@ def toggle_playback() -> None:
     st.session_state.current_frame_request_key = None
     st.session_state.frame_error_message = None
     state_label = "Running" if progress.playback_running else "Paused"
+    LOGGER.info(
+        "Playback toggled new_state=%s frame_index=%s anchor=%s started_at=%s",
+        state_label.lower(),
+        progress.frame_index,
+        progress.playback_anchor_frame_index,
+        progress.playback_started_at_seconds,
+    )
     st.session_state.last_action = f"Playback {state_label.lower()} at frame {progress.frame_index:04d}"
 
 
@@ -279,6 +328,7 @@ def clear_prompts() -> None:
 
 def refresh_preview() -> None:
     st.session_state.preview_generation += 1
+    LOGGER.info("Queued preview refresh generation=%s", st.session_state.preview_generation)
     st.session_state.last_action = f"Queued placeholder preview refresh #{st.session_state.preview_generation}"
 
 
@@ -307,6 +357,14 @@ def _apply_video_metadata(
     upload_signature: str,
     reset_prompts: bool,
 ) -> None:
+    LOGGER.debug(
+        "Applying video metadata asset_id=%s video_name=%s frame_count=%s fps=%.3f reset_prompts=%s",
+        metadata.asset_id,
+        metadata.filename,
+        metadata.frame_count,
+        metadata.fps,
+        reset_prompts,
+    )
     st.session_state.video_loaded = True
     st.session_state.video_name = metadata.filename
     st.session_state.video_mime_type = mime_type
@@ -348,6 +406,12 @@ def _refresh_video_metadata(
     upload_signature: str,
 ) -> None:
     previous_frame_index = int(st.session_state.current_frame_index)
+    LOGGER.debug(
+        "Refreshing metadata without reset asset_id=%s frame_index=%s playback_running=%s",
+        metadata.asset_id,
+        previous_frame_index,
+        st.session_state.playback_running,
+    )
     st.session_state.video_loaded = True
     st.session_state.video_name = metadata.filename
     st.session_state.video_mime_type = mime_type
@@ -389,6 +453,7 @@ def _apply_playback_progress(progress: PlaybackProgress) -> None:
 
 
 def _clear_video_asset_state() -> None:
+    LOGGER.debug("Resetting video asset state")
     st.session_state.video_loaded = False
     st.session_state.video_name = "No video selected"
     st.session_state.video_mime_type = None

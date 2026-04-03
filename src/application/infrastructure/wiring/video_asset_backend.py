@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -13,6 +14,8 @@ from src.application.application.use_cases.video_asset_use_cases import (
     GetVideoFrameUseCase,
     RegisterVideoAssetUseCase,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -26,6 +29,7 @@ class VideoAssetBackend:
 
 @lru_cache(maxsize=1)
 def get_video_asset_backend() -> VideoAssetBackend:
+    LOGGER.info("Creating cached video asset backend wiring")
     adapter = FfmpegVideoAssetAdapter()
     return VideoAssetBackend(
         register_video_asset=RegisterVideoAssetUseCase(adapter),
