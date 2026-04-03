@@ -30,7 +30,7 @@ Act simultaneously as:
 - architecture reviewer
 - strict code quality reviewer
 
-Do not behave like a generic code generator.
+Do not behave like a generic code generator.  
 Behave like a focused implementation and architecture agent for a specialized video processing system.
 
 
@@ -48,8 +48,8 @@ You must optimize for:
 - replaceable external tools
 - measurable quality improvements
 
-Do not optimize for novelty.
-Do not optimize for maximum abstraction.
+Do not optimize for novelty.  
+Do not optimize for maximum abstraction.  
 Do not optimize for hypothetical future use cases outside the defined project scope.
 
 
@@ -150,8 +150,8 @@ The domain must not depend on:
 
 Model the system as explicit processing steps with clean contracts.
 
-Avoid hidden magic flows.
-Avoid one giant processor class.
+Avoid hidden magic flows.  
+Avoid one giant processor class.  
 Avoid ad-hoc side effects between unrelated stages.
 
 ### 4. Declarative orchestration is preferred
@@ -172,9 +172,28 @@ Avoid:
 - huge if/elif chains
 - unstable implicit state flows
 
-### 5. Preview and final render are separate concerns
+### 5. Strategy-first design is preferred
 
-Preview mode and final render mode must be modeled explicitly.
+Prefer polymorphism, strategy selection, dispatch tables, and explicit policies over branching-heavy control flow.
+
+Prefer:
+
+- strategy objects
+- rule objects
+- policy objects
+- registry-driven algorithm selection
+- explicit dispatch by type or mode
+
+Avoid:
+
+- long if/elif chains
+- mode switching spread across many files
+- branching that mixes unrelated responsibilities
+- control flow that hides architectural decisions
+
+### 6. Preview and final render are separate concerns
+
+Preview mode and final render mode must be modeled explicitly.  
 Do not merge them into unclear hybrid behavior.
 
 
@@ -263,12 +282,12 @@ Examples:
 - `ExportMaskVideoUseCase`
 - `ExportTransparentVideoUseCase`
 
-Application code may orchestrate multiple ports.
+Application code may orchestrate multiple ports.  
 Application code must not contain low-level library calls.
 
 ### Ports layer
 
-Defines interfaces for external dependencies.
+Defines interfaces for external dependencies and for inbound application use.
 
 Examples:
 
@@ -283,12 +302,12 @@ Examples:
 - `MattingPort`
 - `PreviewRendererPort`
 - `MetricsPort`
-- `ClockPort` where needed
-- `IdGeneratorPort` where needed
+- `ClockPort`
+- `IdGeneratorPort`
 
 ### Adapters layer
 
-Implements concrete technology integrations.
+Implements concrete technology integrations for ports.
 
 Examples:
 
@@ -297,12 +316,13 @@ Examples:
 - PyTorch model adapter
 - SAM adapter
 - local file frame store adapter
-- FastAPI controller adapter
-- Streamlit UI adapter
+- cache adapter
+- filesystem export adapter
+- metrics adapter
 
 ### Entry points layer
 
-Contains user/system interaction boundaries.
+Contains the system boundaries that translate external interaction into application requests.
 
 Examples:
 
@@ -310,8 +330,11 @@ Examples:
 - CLI commands
 - UI actions
 - job runners
+- workflow triggers
 
-Entry points translate inbound requests into application requests.
+Entry points must remain thin.  
+Entry points translate inbound requests into application requests.  
+Entry points must not contain business logic.
 
 ### Infrastructure layer
 
@@ -328,190 +351,67 @@ Examples:
 - runtime paths
 
 
+## Structural consistency rule
+
+The repository structure must reflect the declared architectural layers directly.
+
+If the architecture defines these layers:
+
+- `domain`
+- `application`
+- `ports`
+- `adapters`
+- `entrypoints`
+- `infrastructure`
+
+then the package structure must expose them clearly and consistently.
+
+Do not describe layers one way and implement them with a different structural model unless the alternative is explicitly documented as the canonical project standard.
+
+
 ## Mandatory package structure
 
 Use this structure unless the repository already contains a stricter equivalent:
 
 ```text
 src/
+  domain/
+    model/
+    services/
+    rules/
+    value_objects/
+    errors/
+
   application/
-    domain/
-      model/
-      services/
-      rules/
-      value_objects/
-      errors/
+    use_cases/
+    dto/
+    services/
+    processors/
+    policies/
+    mappers/
 
-    application/
-      use_cases/
-      dto/
-      services/
-      processors/
-      policies/
-      mappers/
+  ports/
+    incoming/
+    outgoing/
 
-    ports/
-      incoming/
-      outgoing/
+  adapters/
+    outgoing/
+      video/
+      segmentation/
+      motion/
+      rendering/
+      storage/
+      metrics/
 
-    adapters/
-      incoming/
-        api/
-        cli/
-        ui/
-      outgoing/
-        video/
-        segmentation/
-        motion/
-        rendering/
-        storage/
-        metrics/
+  entrypoints/
+    api/
+    cli/
+    ui/
+    jobs/
 
-    infrastructure/
-      config/
-      wiring/
-      logging/
-      runtime/
-      cache/
-```
-
-
-## Mandatory bugfix workflow
-
-Whenever a bug, exception, incorrect behavior, defect, or regression is reported, the repository must be handled with a strict regression-first workflow.
-
-No bug fix is complete unless all of the following are true:
-
-1. an automated regression test exists for the reported behavior
-2. the test is placed in the correct hexagonal layer
-3. the production fix is applied in the correct hexagonal layer
-4. the relevant surrounding behavior is verified after the fix
-
-Do not silently patch bugs without test protection.
-
-The required sequence is:
-
-1. analyze the reported defect carefully
-2. identify the failing behavior
-3. identify the likely root cause
-4. determine the correct hexagonal layer for the defect
-5. determine the correct hexagonal layer for the regression test
-6. create or update a failing automated regression test first
-7. run the test and confirm it fails for the correct reason
-8. implement the smallest correct production fix in the correct layer
-9. run the regression test again and confirm it passes
-10. run the relevant surrounding test suite
-11. inspect nearby branches, fallbacks, and decision paths and add focused tests where needed
-12. summarize root cause, layer placement, fix, and verification
-
-
-## Layer-specific bug ownership
-
-Fix defects in the layer where the responsibility belongs.
-
-Do not:
-
-- patch domain rule bugs in controllers or UI code
-- patch application orchestration bugs in infrastructure code
-- patch adapter translation bugs in domain code
-- bury architecture mistakes under convenience conditionals
-- move logic into random layers because it seems faster
-
-If a bug exposes misplaced logic, move only the necessary part to the correct layer and keep the change as small as possible.
-
-
-## Test placement rules
-
-### Domain defects
-
-Use domain unit tests for:
-
-- invariants
-- business rules
-- domain transformations
-- invalid state handling
-- deterministic domain calculations
-
-Do not primarily test these through adapters if the real defect is domain behavior.
-
-### Application defects
-
-Use application or use-case tests for:
-
-- orchestration errors
-- branching decisions across ports
-- missing calls to ports
-- wrong call order
-- incorrect use-case coordination
-
-Application tests should use mocked or fake ports where appropriate.
-
-### Port contract defects
-
-Use contract tests for:
-
-- adapter-to-port mismatches
-- incorrect return semantics
-- missing required fields across boundaries
-- semantic mismatches between application expectations and adapter behavior
-
-### Driving adapter defects
-
-Use adapter tests for:
-
-- UI state translation bugs
-- controller/request mapping bugs
-- response mapping bugs
-- malformed input handling at the system boundary
-
-### Driven adapter defects
-
-Use infrastructure or adapter tests for:
-
-- file access bugs
-- repository mapping bugs
-- external tool integration bugs
-- ffmpeg or video-decoding adapter bugs
-- persistence or gateway translation defects
-
-### Cross-boundary defects
-
-Use focused integration tests only when the defect genuinely crosses layers and cannot be protected well in a narrower test.
-
-
-## Coverage and branch protection rules
-
-Every bugfix must consider branch coverage in the affected area.
-
-Minimum expectations:
-
-- protect the failing path with an automated assertion
-- inspect nearby conditionals, fallbacks, null-handling, and empty-state behavior
-- add a second focused test for the meaningful alternative branch when the reported bug exposes a branch boundary
-- preserve or improve relevant coverage instead of weakening it
-
-Prefer small, behavior-focused tests over broad shallow tests.
-
-
-## Forbidden shortcuts for bug handling
-
-Do not:
-
-- fix a reported bug without adding or updating a regression test
-- place the regression test in the wrong layer just because it is faster
-- suppress an error instead of fixing the real cause unless suppression is explicitly the correct behavior
-- weaken or delete valid tests to make the build green
-- hide business logic in adapters
-- bypass ports casually when the architecture already defines them
-
-
-## Verification expectations after bugfixes
-
-After every bugfix, explicitly verify:
-
-- the new regression test passes
-- the relevant surrounding tests pass
-- the affected branch or fallback path is protected
-- the fix preserves hexagonal boundaries
-
-If exact reproduction is difficult, create the strongest valid characterization test possible from stack traces, logs, failing inputs, or observed behavior. Still do not skip test creation unless it is truly impossible.
+  infrastructure/
+    config/
+    wiring/
+    logging/
+    runtime/
+    cache/

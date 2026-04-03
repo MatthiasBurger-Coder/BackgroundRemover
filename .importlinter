@@ -27,3 +27,40 @@ source_modules =
     src.application.adapters.outgoing
 forbidden_modules =
     src.application.adapters.incoming
+
+[importlinter:contract:domain_must_not_import_outer_layers]
+name = Domain must not import application adapters or infrastructure
+type = forbidden
+source_modules =
+    src.application.domain
+forbidden_modules =
+    src.application.application
+    src.application.adapters
+    src.application.infrastructure
+
+[importlinter:contract:ports_must_not_import_application_or_technical_layers]
+name = Ports must not import application adapters or infrastructure
+type = forbidden
+source_modules =
+    src.application.ports
+forbidden_modules =
+    src.application.application
+    src.application.adapters
+    src.application.infrastructure
+
+[importlinter:contract:application_must_not_import_adapters_or_infrastructure]
+name = Application must not import adapters or infrastructure directly
+type = forbidden
+source_modules =
+    src.application.application
+forbidden_modules =
+    src.application.adapters
+    src.application.infrastructure
+
+[importlinter:contract:outgoing_adapters_must_not_import_application]
+name = Outgoing adapters must not depend on application orchestration
+type = forbidden
+source_modules =
+    src.application.adapters.outgoing
+forbidden_modules =
+    src.application.application
