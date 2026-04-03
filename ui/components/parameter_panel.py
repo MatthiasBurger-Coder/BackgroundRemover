@@ -38,6 +38,6 @@ def render_parameter_panel() -> None:
                 "Prototype Note": "Placeholder toggle for future review overlays.",
             },
         ],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )

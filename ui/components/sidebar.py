@@ -23,7 +23,7 @@ def render_sidebar(selected_frame: FrameLabel) -> None:
         st.subheader("Session")
         st.dataframe(
             get_workspace_info(st.session_state.video_loaded, st.session_state.video_name),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -48,9 +48,9 @@ def render_sidebar(selected_frame: FrameLabel) -> None:
         st.checkbox("Debug overlay", key="show_debug_overlay")
 
         st.subheader("Actions")
-        if st.button("Refresh Preview", use_container_width=True, type="primary"):
+        if st.button("Refresh Preview", width="stretch", type="primary"):
             refresh_preview()
-        if st.button("Clear Prompts", use_container_width=True):
+        if st.button("Clear Prompts", width="stretch"):
             clear_prompts()
 
         st.subheader("Current Focus")
@@ -59,4 +59,4 @@ def render_sidebar(selected_frame: FrameLabel) -> None:
         st.caption(selected_frame.note)
 
         st.subheader("Preview Profile")
-        st.dataframe(get_preview_metadata(), use_container_width=True, hide_index=True)
+        st.dataframe(get_preview_metadata(), width="stretch", hide_index=True)

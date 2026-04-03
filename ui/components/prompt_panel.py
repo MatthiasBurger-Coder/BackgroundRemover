@@ -37,7 +37,7 @@ def render_prompt_panel(frame_catalog: list[FrameLabel], selected_frame: FrameLa
                 step=1,
                 key="prompt_y",
             )
-            submitted = st.form_submit_button("Add Prompt", use_container_width=True)
+            submitted = st.form_submit_button("Add Prompt", width="stretch")
             if submitted:
                 add_prompt(frame_catalog)
 
@@ -50,6 +50,6 @@ def render_prompt_panel(frame_catalog: list[FrameLabel], selected_frame: FrameLa
         st.markdown("**Current Prompt Entries**")
         st.caption("Session-local placeholder entries only.")
         if rows:
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+            st.dataframe(rows, width="stretch", hide_index=True)
         else:
             st.info("No prompt entries are currently defined in this UI session.")

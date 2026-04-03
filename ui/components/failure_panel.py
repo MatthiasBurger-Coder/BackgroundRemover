@@ -26,7 +26,7 @@ def render_failure_panel(failure_cases: list[FailureCase]) -> None:
 
         st.dataframe(
             [case.to_row() for case in failure_cases],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 

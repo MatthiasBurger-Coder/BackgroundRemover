@@ -26,7 +26,7 @@ def render_status_panel(
 
     with left_column:
         st.markdown("**Runtime Snapshot**")
-        st.dataframe(runtime_snapshot, use_container_width=True, hide_index=True)
+        st.dataframe(runtime_snapshot, width="stretch", hide_index=True)
         st.markdown("**UI State**")
         st.dataframe(
             [
@@ -35,13 +35,13 @@ def render_status_panel(
                 {"Field": "Mask Feather", "Value": str(st.session_state.mask_feather)},
                 {"Field": "Mask Invert", "Value": str(st.session_state.mask_invert)},
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
     with right_column:
         st.markdown("**Planned Resource Handles**")
-        st.dataframe(runtime_handles, use_container_width=True, hide_index=True)
+        st.dataframe(runtime_handles, width="stretch", hide_index=True)
         st.markdown("**Extension Notes**")
         st.write("No backend services are called in this prototype.")
         st.write("All values are mock session state or static placeholder metadata.")

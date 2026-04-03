@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import streamlit as st
+from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from ui.components import (
     render_failure_panel,
@@ -83,4 +90,7 @@ def render_keyframe_section(frame_catalog) -> None:
 
 
 if __name__ == "__main__":
+    if get_script_run_ctx(suppress_warning=True) is None:
+        print("Start this UI with: streamlit run ui/app.py")
+        raise SystemExit(1)
     main()
