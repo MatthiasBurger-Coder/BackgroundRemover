@@ -6,7 +6,6 @@ import base64
 from html import escape
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 
 def render_workspace_video_panel(
@@ -43,15 +42,16 @@ def render_workspace_video_panel(
     if panel_note:
         footer_parts.append(escape(panel_note))
 
-    components.html(
-        _build_panel_html(
-            title=title,
-            metadata_items=metadata_items,
-            body_html=body_html,
-            footer_text=" | ".join(footer_parts) if footer_parts else None,
-        ),
+    panel_html = _build_panel_html(
+        title=title,
+        metadata_items=metadata_items,
+        body_html=body_html,
+        footer_text=" | ".join(footer_parts) if footer_parts else None,
+    )
+    st.iframe(
+        src=panel_html,
+        width="stretch",
         height=component_height_px,
-        scrolling=False,
     )
 
 
