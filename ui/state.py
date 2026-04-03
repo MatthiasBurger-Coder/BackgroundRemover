@@ -84,12 +84,11 @@ def register_video_selection(uploaded_file: Any | None) -> bool:
     ):
         try:
             metadata = backend.get_video_asset_metadata.execute(st.session_state.asset_id)
-            _apply_video_metadata(
+            _refresh_video_metadata(
                 metadata=metadata,
                 mime_type=uploaded_file.type or "video/mp4",
                 source_video_bytes=uploaded_bytes,
                 upload_signature=upload_signature,
-                reset_prompts=False,
             )
             return False
         except VideoAssetNotFoundError:
@@ -341,6 +340,46 @@ def _apply_video_metadata(
     st.session_state.frame_error_message = None
 
 
+def _refresh_video_metadata(
+    *,
+    metadata: VideoAssetMetadata,
+    mime_type: str,
+    source_video_bytes: bytes | None,
+    upload_signature: str,
+) -> None:
+    previous_frame_index = int(st.session_state.current_frame_index)
+    st.session_state.video_loaded = True
+    st.session_state.video_name = metadata.filename
+    st.session_state.video_mime_type = mime_type
+    st.session_state.source_video_bytes = source_video_bytes
+    st.session_state.video_upload_signature = upload_signature
+    st.session_state.asset_id = metadata.asset_id
+    st.session_state.video_fps = metadata.fps
+    st.session_state.video_frame_count = metadata.frame_count
+    st.session_state.video_duration_seconds = metadata.duration_seconds
+    st.session_state.video_width = metadata.width
+    st.session_state.video_height = metadata.height
+    st.session_state.current_frame_width = metadata.width
+    st.session_state.current_frame_height = metadata.height
+    clamped_frame_index = clamp_current_frame_index(previous_frame_index)
+    if clamped_frame_index != previous_frame_index:
+        progress = build_navigation_position(
+            frame_index=clamped_frame_index,
+            frame_count=metadata.frame_count,
+            fps=metadata.fps,
+        )
+        _apply_playback_progress(progress)
+        st.session_state.current_frame_image_bytes = None
+        st.session_state.current_frame_image_mime_type = None
+        st.session_state.current_frame_request_key = None
+    elif not st.session_state.playback_running:
+        st.session_state.current_frame_timestamp_seconds = format_time_seconds_for_frame(
+            frame_index=clamped_frame_index,
+            fps=metadata.fps,
+        )
+    st.session_state.frame_error_message = None
+
+
 def _apply_playback_progress(progress: PlaybackProgress) -> None:
     st.session_state.current_frame_index = progress.frame_index
     st.session_state.current_frame_timestamp_seconds = progress.time_seconds
@@ -372,3 +411,9 @@ def _clear_video_asset_state() -> None:
     st.session_state.playback_running = False
     st.session_state.playback_anchor_frame_index = None
     st.session_state.playback_started_at_seconds = None
+
+
+def format_time_seconds_for_frame(*, frame_index: int, fps: float) -> float:
+    if fps <= 0:
+        return 0.0
+    return max(frame_index, 0) / fps
