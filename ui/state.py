@@ -1,21 +1,24 @@
-"""Session state helpers for the internal Streamlit UI shell."""
+"""Session state helpers for the backend-assisted Streamlit operator UI."""
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 import streamlit as st
 
-from ui.mock_data import FrameLabel, PromptEntry, build_prompt_entry, get_default_prompt_entries
+from src.application.domain.errors.video_asset_errors import VideoAssetNotFoundError
+from src.application.domain.model.video_asset import VideoAssetMetadata
+from src.application.infrastructure.wiring.video_asset_backend import get_video_asset_backend
+from ui.mock_data import PromptEntry
 
 
-def initialize_state(frame_catalog: list[FrameLabel]) -> None:
+def initialize_state() -> None:
     defaults: dict[str, Any] = {
-        "selected_frame": 128,
         "prompt_mode": "foreground",
         "prompt_x": 640,
         "prompt_y": 320,
-        "prompt_entries": get_default_prompt_entries(frame_catalog),
+        "prompt_entries": [],
         "preview_generation": 3,
         "mask_threshold": 0.62,
         "mask_feather": 8,
@@ -24,8 +27,22 @@ def initialize_state(frame_catalog: list[FrameLabel]) -> None:
         "selected_error_index": 0,
         "video_loaded": False,
         "video_name": "No video selected",
-        "video_bytes": None,
         "video_mime_type": None,
+        "video_upload_signature": None,
+        "asset_id": None,
+        "video_fps": 0.0,
+        "video_frame_count": 0,
+        "video_duration_seconds": 0.0,
+        "video_width": 0,
+        "video_height": 0,
+        "current_frame_index": 0,
+        "current_frame_timestamp_seconds": 0.0,
+        "current_frame_image_bytes": None,
+        "current_frame_image_mime_type": None,
+        "current_frame_width": 0,
+        "current_frame_height": 0,
+        "current_frame_request_key": None,
+        "playback_running": False,
         "last_action": "UI session initialized",
     }
     for key, value in defaults.items():
@@ -33,58 +50,156 @@ def initialize_state(frame_catalog: list[FrameLabel]) -> None:
             st.session_state[key] = value
 
 
-def get_selected_frame(frame_catalog: list[FrameLabel]) -> FrameLabel:
-    selected_frame = st.session_state.selected_frame
-    for frame in frame_catalog:
-        if frame.index == selected_frame:
-            return frame
-    return frame_catalog[0]
-
-
-def set_selected_frame(frame_index: int) -> None:
-    st.session_state.selected_frame = frame_index
-    st.session_state.last_action = f"Selected keyframe {frame_index:04d}"
-
-
-def sync_selected_frame() -> None:
-    set_selected_frame(int(st.session_state.selected_frame))
-
-
-def register_video_selection(uploaded_file: Any | None) -> None:
+def register_video_selection(uploaded_file: Any | None) -> bool:
     if uploaded_file is None:
         if st.session_state.video_loaded:
-            st.session_state.video_loaded = False
-            st.session_state.video_name = "No video selected"
-            st.session_state.video_bytes = None
-            st.session_state.video_mime_type = None
-            st.session_state.last_action = "Cleared video selection"
-        return
+            _clear_video_asset_state()
+            st.session_state.last_action = "Cleared source asset selection"
+            return True
+        return False
 
     uploaded_bytes = uploaded_file.getvalue()
-    uploaded_mime_type = uploaded_file.type or "video/mp4"
-
+    upload_signature = hashlib.sha256(uploaded_bytes).hexdigest()
+    backend = get_video_asset_backend()
     if (
-        uploaded_file.name != st.session_state.video_name
-        or uploaded_bytes != st.session_state.video_bytes
-        or uploaded_mime_type != st.session_state.video_mime_type
-        or not st.session_state.video_loaded
+        upload_signature == st.session_state.video_upload_signature
+        and uploaded_file.name == st.session_state.video_name
+        and st.session_state.asset_id is not None
     ):
-        st.session_state.video_loaded = True
-        st.session_state.video_name = uploaded_file.name
-        st.session_state.video_bytes = uploaded_bytes
-        st.session_state.video_mime_type = uploaded_mime_type
-        st.session_state.last_action = f"Loaded source video {uploaded_file.name}"
+        try:
+            metadata = backend.get_video_asset_metadata.execute(st.session_state.asset_id)
+            _apply_video_metadata(
+                metadata=metadata,
+                mime_type=uploaded_file.type or "video/mp4",
+                upload_signature=upload_signature,
+                reset_prompts=False,
+            )
+            return False
+        except VideoAssetNotFoundError:
+            pass
+
+    metadata = backend.register_video_asset.execute(
+        filename=uploaded_file.name,
+        video_bytes=uploaded_bytes,
+        mime_type=uploaded_file.type,
+    )
+    _apply_video_metadata(
+        metadata=metadata,
+        mime_type=uploaded_file.type or "video/mp4",
+        upload_signature=upload_signature,
+        reset_prompts=True,
+    )
+    st.session_state.last_action = f"Registered backend source asset {metadata.filename}"
+    return True
 
 
-def add_prompt(frame_catalog: list[FrameLabel]) -> None:
-    frame = get_selected_frame(frame_catalog)
+def ensure_current_frame_loaded() -> None:
+    if not st.session_state.video_loaded or st.session_state.asset_id is None:
+        st.session_state.current_frame_image_bytes = None
+        st.session_state.current_frame_image_mime_type = None
+        st.session_state.current_frame_request_key = None
+        return
+
+    frame_index = clamp_current_frame_index(st.session_state.current_frame_index)
+    request_key = (st.session_state.asset_id, frame_index)
+    if request_key == st.session_state.current_frame_request_key and st.session_state.current_frame_image_bytes:
+        return
+
+    backend = get_video_asset_backend()
+    frame = backend.get_video_frame.execute(
+        asset_id=st.session_state.asset_id,
+        frame_index=frame_index,
+    )
+    st.session_state.current_frame_index = frame.frame_index
+    st.session_state.current_frame_timestamp_seconds = frame.timestamp_seconds
+    st.session_state.current_frame_image_bytes = frame.image_bytes
+    st.session_state.current_frame_image_mime_type = frame.mime_type
+    st.session_state.current_frame_width = frame.width
+    st.session_state.current_frame_height = frame.height
+    st.session_state.current_frame_request_key = request_key
+
+
+def clamp_current_frame_index(frame_index: int) -> int:
+    frame_count = int(st.session_state.video_frame_count)
+    if frame_count <= 0:
+        return 0
+    return max(0, min(int(frame_index), frame_count - 1))
+
+
+def sync_current_frame_index() -> None:
+    set_current_frame_index(st.session_state.current_frame_index)
+
+
+def set_current_frame_index(frame_index: int) -> None:
+    clamped_frame_index = clamp_current_frame_index(frame_index)
+    st.session_state.current_frame_index = clamped_frame_index
+    st.session_state.current_frame_request_key = None
+    st.session_state.playback_running = False
+    st.session_state.last_action = f"Selected frame {clamped_frame_index:04d}"
+
+
+def jump_to_first_frame() -> None:
+    set_current_frame_index(0)
+
+
+def jump_to_last_frame() -> None:
+    if st.session_state.video_frame_count <= 0:
+        return
+    set_current_frame_index(st.session_state.video_frame_count - 1)
+
+
+def step_current_frame(step: int) -> None:
+    set_current_frame_index(st.session_state.current_frame_index + step)
+
+
+def toggle_playback() -> None:
+    if not st.session_state.video_loaded or st.session_state.video_frame_count <= 0:
+        return
+    if st.session_state.current_frame_index >= st.session_state.video_frame_count - 1:
+        st.session_state.current_frame_index = 0
+        st.session_state.current_frame_request_key = None
+    st.session_state.playback_running = not st.session_state.playback_running
+    state_label = "Running" if st.session_state.playback_running else "Paused"
+    st.session_state.last_action = f"Playback {state_label.lower()} at frame {st.session_state.current_frame_index:04d}"
+
+
+def advance_playback_frame() -> None:
+    if not st.session_state.playback_running:
+        return
+    if st.session_state.video_frame_count <= 0:
+        st.session_state.playback_running = False
+        return
+    if st.session_state.current_frame_index >= st.session_state.video_frame_count - 1:
+        st.session_state.playback_running = False
+        st.session_state.last_action = "Playback reached the final frame"
+        return
+
+    next_frame_index = st.session_state.current_frame_index + 1
+    st.session_state.current_frame_index = next_frame_index
+    st.session_state.current_frame_request_key = None
+    st.session_state.last_action = f"Playback advanced to frame {next_frame_index:04d}"
+
+
+def get_playback_interval_seconds() -> float:
+    fps = float(st.session_state.video_fps)
+    if fps <= 0:
+        return 0.25
+    preview_fps = min(fps, 4.0)
+    return max(1.0 / preview_fps, 0.15)
+
+
+def add_prompt() -> None:
     new_identifier = len(st.session_state.prompt_entries) + 1
-    prompt = build_prompt_entry(
+    frame_index = int(st.session_state.current_frame_index)
+    timecode = format_timecode(st.session_state.current_frame_timestamp_seconds)
+    prompt = PromptEntry(
         identifier=new_identifier,
         mode=st.session_state.prompt_mode,
+        frame_index=frame_index,
+        frame_label=f"Frame {frame_index:04d} | {timecode}",
         x=int(st.session_state.prompt_x),
         y=int(st.session_state.prompt_y),
-        frame=frame,
+        source="Operator input",
     )
     st.session_state.prompt_entries = [*st.session_state.prompt_entries, prompt]
     st.session_state.last_action = (
@@ -109,3 +224,63 @@ def set_selected_error(index: int) -> None:
 
 def get_prompt_rows(prompt_entries: list[PromptEntry]) -> list[dict[str, str | int]]:
     return [entry.to_row() for entry in prompt_entries]
+
+
+def format_timecode(timestamp_seconds: float) -> str:
+    total_milliseconds = max(int(round(timestamp_seconds * 1000)), 0)
+    hours, remainder = divmod(total_milliseconds, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    seconds, milliseconds = divmod(remainder, 1_000)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+
+
+def _apply_video_metadata(
+    *,
+    metadata: VideoAssetMetadata,
+    mime_type: str,
+    upload_signature: str,
+    reset_prompts: bool,
+) -> None:
+    st.session_state.video_loaded = True
+    st.session_state.video_name = metadata.filename
+    st.session_state.video_mime_type = mime_type
+    st.session_state.video_upload_signature = upload_signature
+    st.session_state.asset_id = metadata.asset_id
+    st.session_state.video_fps = metadata.fps
+    st.session_state.video_frame_count = metadata.frame_count
+    st.session_state.video_duration_seconds = metadata.duration_seconds
+    st.session_state.video_width = metadata.width
+    st.session_state.video_height = metadata.height
+    if reset_prompts:
+        st.session_state.current_frame_index = 0
+        st.session_state.prompt_entries = []
+    else:
+        st.session_state.current_frame_index = clamp_current_frame_index(st.session_state.current_frame_index)
+    st.session_state.current_frame_timestamp_seconds = 0.0
+    st.session_state.current_frame_image_bytes = None
+    st.session_state.current_frame_image_mime_type = None
+    st.session_state.current_frame_width = metadata.width
+    st.session_state.current_frame_height = metadata.height
+    st.session_state.current_frame_request_key = None
+    st.session_state.playback_running = False
+
+
+def _clear_video_asset_state() -> None:
+    st.session_state.video_loaded = False
+    st.session_state.video_name = "No video selected"
+    st.session_state.video_mime_type = None
+    st.session_state.video_upload_signature = None
+    st.session_state.asset_id = None
+    st.session_state.video_fps = 0.0
+    st.session_state.video_frame_count = 0
+    st.session_state.video_duration_seconds = 0.0
+    st.session_state.video_width = 0
+    st.session_state.video_height = 0
+    st.session_state.current_frame_index = 0
+    st.session_state.current_frame_timestamp_seconds = 0.0
+    st.session_state.current_frame_image_bytes = None
+    st.session_state.current_frame_image_mime_type = None
+    st.session_state.current_frame_width = 0
+    st.session_state.current_frame_height = 0
+    st.session_state.current_frame_request_key = None
+    st.session_state.playback_running = False

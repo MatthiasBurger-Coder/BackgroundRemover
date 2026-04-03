@@ -1,4 +1,4 @@
-"""Reusable viewport-aware workspace media panels for the Streamlit UI shell."""
+"""Reusable viewport-aware workspace media panels for the Streamlit operator UI."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def render_workspace_video_panel(
     stage_height: str = "clamp(320px, 56vh, 680px)",
 ) -> None:
     """Render a viewport-aware HTML video panel for uploaded media."""
-    video_source = _build_video_source(video_bytes, mime_type)
+    video_source = _build_data_url(video_bytes, mime_type or "video/mp4")
     body_html = _build_video_stage_html(
         video_source=video_source,
         mime_type=mime_type or "video/mp4",
@@ -46,6 +46,36 @@ def render_workspace_video_panel(
     )
 
 
+def render_workspace_image_panel(
+    title: str,
+    metadata_items: list[tuple[str, str]],
+    *,
+    image_bytes: bytes | None,
+    mime_type: str | None,
+    empty_title: str,
+    empty_lines: list[str],
+    panel_note: str | None = None,
+    stage_height: str = "clamp(320px, 58vh, 720px)",
+) -> None:
+    """Render a viewport-aware image panel for the current backend-selected frame."""
+    image_source = _build_data_url(image_bytes, mime_type or "image/png")
+    body_html = _build_image_stage_html(
+        image_source=image_source,
+        empty_title=empty_title,
+        empty_lines=empty_lines,
+        stage_height=stage_height,
+    )
+    st.html(
+        _build_panel_html(
+            title=title,
+            metadata_items=metadata_items,
+            body_html=body_html,
+            footer_text=panel_note,
+        ),
+        width="stretch",
+    )
+
+
 def render_workspace_placeholder_panel(
     title: str,
     metadata_items: list[tuple[str, str]],
@@ -55,7 +85,7 @@ def render_workspace_placeholder_panel(
     panel_note: str | None = None,
     stage_height: str = "clamp(220px, 34vh, 360px)",
 ) -> None:
-    """Render a reusable placeholder panel with the same workspace framing as the video view."""
+    """Render a reusable placeholder panel with the same workspace framing as media views."""
     body_html = _build_placeholder_stage_html(
         placeholder_title=placeholder_title,
         placeholder_lines=placeholder_lines,
@@ -72,11 +102,11 @@ def render_workspace_placeholder_panel(
     )
 
 
-def _build_video_source(video_bytes: bytes | None, mime_type: str | None) -> str | None:
-    if not video_bytes:
+def _build_data_url(payload: bytes | None, mime_type: str) -> str | None:
+    if not payload:
         return None
-    encoded = base64.b64encode(video_bytes).decode("ascii")
-    return f"data:{mime_type or 'video/mp4'};base64,{encoded}"
+    encoded = base64.b64encode(payload).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
 
 
 def _build_video_stage_html(
@@ -100,6 +130,27 @@ def _build_video_stage_html(
         <source src="{video_source}" type="{escape(mime_type)}" />
         Your browser does not support the HTML video element.
       </video>
+    </div>
+    """
+
+
+def _build_image_stage_html(
+    *,
+    image_source: str | None,
+    empty_title: str,
+    empty_lines: list[str],
+    stage_height: str,
+) -> str:
+    if image_source is None:
+        return _build_placeholder_stage_html(
+            placeholder_title=empty_title,
+            placeholder_lines=empty_lines,
+            stage_height=stage_height,
+        )
+
+    return f"""
+    <div class="workspace-media-panel__stage" style="height: {escape(stage_height)};">
+      <img class="workspace-media-panel__image" src="{image_source}" alt="Current workbench frame" />
     </div>
     """
 
@@ -204,7 +255,8 @@ def _build_panel_html(
         align-items: center;
         justify-content: center;
       }}
-      .workspace-media-panel__video {{
+      .workspace-media-panel__video,
+      .workspace-media-panel__image {{
         width: 100%;
         height: 100%;
         object-fit: contain;

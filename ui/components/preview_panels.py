@@ -1,20 +1,21 @@
-"""Preview panels for the internal Streamlit UI shell."""
+"""Workbench and workspace panels for the backend-assisted Streamlit operator UI."""
 
 from __future__ import annotations
 
 import streamlit as st
 
-from ui.mock_data import FrameLabel
-from ui.components.video_panel import render_workspace_placeholder_panel, render_workspace_video_panel
+from ui.components.source_context import render_source_context_panel
+from ui.components.video_panel import render_workspace_image_panel, render_workspace_placeholder_panel
+from ui.state import format_timecode
 
 
-def render_preview_panels(selected_frame: FrameLabel) -> None:
-    _render_mask_workbench_panel(selected_frame)
+def render_preview_panels() -> None:
+    _render_mask_workbench_panel()
 
     detail_tab, mask_tab, preview_tab = st.tabs(["Source Context", "Mask View", "Masked Preview"])
 
     with detail_tab:
-        _render_source_context_panel(selected_frame)
+        render_source_context_panel()
 
     with mask_tab:
         _render_view_placeholder(
@@ -39,7 +40,7 @@ def render_preview_panels(selected_frame: FrameLabel) -> None:
                 "Display mode: composited preview placeholder.",
                 f"Preview generation counter: {st.session_state.preview_generation}",
                 f"Debug overlay: {debug_label}",
-                "Render path: no rendering backend attached.",
+                "Render path: no preview renderer attached.",
             ],
             inspection_lines=[
                 "Intended use: review how the masked subject would look in preview mode.",
@@ -61,53 +62,32 @@ def _render_view_placeholder(
     )
 
 
-def _render_mask_workbench_panel(selected_frame: FrameLabel) -> None:
-    workbench_state = "ready for authoring" if st.session_state.video_loaded else "waiting for source context"
+def _render_mask_workbench_panel() -> None:
+    workbench_state = "backend frame bound" if st.session_state.video_loaded else "waiting for source asset"
     overlay_state = "debug overlay on" if st.session_state.show_debug_overlay else "debug overlay off"
-    render_workspace_placeholder_panel(
+    render_workspace_image_panel(
         title="Mask Workbench",
         metadata_items=[
-            ("Frame", f"{selected_frame.index:04d}"),
-            ("Mode", "Authoring"),
+            ("Frame", f"{st.session_state.current_frame_index:04d}"),
+            ("Timecode", format_timecode(st.session_state.current_frame_timestamp_seconds)),
             ("Overlay", overlay_state),
             ("State", workbench_state),
         ],
-        placeholder_title="Mask Authoring Workspace",
-        placeholder_lines=[
-            "Primary operator surface for future prompt-driven mask creation and refinement.",
-            "This viewport is reserved for the editing canvas, overlay interactions, and mask layer inspection.",
-            "No live mask authoring logic is active yet in this prototype.",
-        ],
-        panel_note=(
-            f"Active frame {selected_frame.index:04d} | "
-            "Future use: prompt interaction, overlay editing, mask review."
-        ),
-        stage_height="clamp(320px, 52vh, 640px)",
-    )
-
-
-def _render_source_context_panel(selected_frame: FrameLabel) -> None:
-    source_status = "uploaded source available" if st.session_state.video_loaded else "waiting for uploaded source"
-    render_workspace_video_panel(
-        title="Source Context",
-        metadata_items=[
-            ("Frame", f"{selected_frame.index:04d}"),
-            ("Timecode", selected_frame.timecode),
-            ("Status", source_status),
-        ],
-        video_bytes=st.session_state.video_bytes,
-        mime_type=st.session_state.video_mime_type,
-        asset_name=st.session_state.video_name if st.session_state.video_loaded else None,
-        empty_title="Source reference not available",
+        image_bytes=st.session_state.current_frame_image_bytes,
+        mime_type=st.session_state.current_frame_image_mime_type,
+        empty_title="Mask Authoring Workspace",
         empty_lines=[
-            "Upload an original video in the operator column to inspect it here.",
-            "Use this reference view for source comparison while authoring masks in the workbench.",
+            "Upload a source asset and use Source Context transport controls to bind a work frame.",
+            "The workbench will display the backend-selected frame here for future prompt placement and overlays.",
+            "No mask generation or authoring logic is active yet in this slice.",
         ],
         panel_note=(
-            f"Reference role: source comparison and operator inspection | "
-            f"Frame note: {selected_frame.note}"
+            f"Workbench frame source: {st.session_state.video_name} | "
+            "Future use: prompt interaction, overlay editing, mask layer review."
+            if st.session_state.video_loaded
+            else "Future use: prompt interaction, overlay editing, mask layer review."
         ),
-        stage_height="clamp(280px, 44vh, 540px)",
+        stage_height="clamp(340px, 58vh, 760px)",
     )
 
 

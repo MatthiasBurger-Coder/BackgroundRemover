@@ -1,4 +1,4 @@
-"""Mock data for the internal Streamlit UI shell."""
+"""Mock and reference data for the backend-assisted Streamlit operator UI."""
 
 from __future__ import annotations
 
@@ -75,33 +75,6 @@ def get_frame_catalog() -> list[FrameLabel]:
     ]
 
 
-def build_prompt_entry(
-    identifier: int,
-    mode: str,
-    x: int,
-    y: int,
-    frame: FrameLabel,
-    source: str = "Operator input",
-) -> PromptEntry:
-    return PromptEntry(
-        identifier=identifier,
-        mode=mode,
-        frame_index=frame.index,
-        frame_label=frame.label,
-        x=x,
-        y=y,
-        source=source,
-    )
-
-
-def get_default_prompt_entries(frame_catalog: list[FrameLabel]) -> list[PromptEntry]:
-    keyframe = next(frame for frame in frame_catalog if frame.index == 128)
-    return [
-        build_prompt_entry(1, "foreground", 642, 284, keyframe, "Seeded placeholder"),
-        build_prompt_entry(2, "background", 188, 112, keyframe, "Seeded placeholder"),
-    ]
-
-
 def get_failure_cases() -> list[FailureCase]:
     return [
         FailureCase(
@@ -147,32 +120,41 @@ def get_failure_cases() -> list[FailureCase]:
     ]
 
 
-def get_workspace_info(video_loaded: bool, video_name: str) -> list[dict[str, str]]:
-    source_label = "Uploaded session asset" if video_loaded else "Mock internal session"
-    active_video = video_name if video_loaded else "operator_take_07_placeholder.mp4"
+def get_workspace_info(
+    *,
+    video_loaded: bool,
+    video_name: str,
+    asset_id: str | None,
+    frame_count: int,
+) -> list[dict[str, str]]:
+    source_label = "Backend-managed asset" if video_loaded else "No asset registered"
+    active_video = video_name if video_loaded else "Awaiting upload"
+    active_asset_id = asset_id[:8] if asset_id else "Not assigned"
     return [
         {"Field": "Workspace", "Value": "Mask Preview Lab"},
         {"Field": "Session", "Value": "UI-SHELL-042"},
         {"Field": "Operator Profile", "Value": "Internal review mode"},
         {"Field": "Video Source", "Value": source_label},
         {"Field": "Active Asset", "Value": active_video},
+        {"Field": "Asset ID", "Value": active_asset_id},
+        {"Field": "Frame Count", "Value": str(frame_count) if frame_count > 0 else "Not loaded"},
     ]
 
 
-def get_preview_metadata() -> list[dict[str, str]]:
+def get_preview_metadata(*, transport_ready: bool, fps: float) -> list[dict[str, str]]:
     return [
         {"Field": "Preview Profile", "Value": "Operator Preview"},
-        {"Field": "Resolution", "Value": "1280 x 720 placeholder"},
         {"Field": "Mask Mode", "Value": "Single-subject matte"},
-        {"Field": "Transport", "Value": "No backend attached"},
+        {"Field": "Transport", "Value": "Frame backend active" if transport_ready else "Waiting for source asset"},
+        {"Field": "Playback", "Value": f"Preview stepping at {min(fps, 4.0):.2f} fps" if transport_ready else "Not available"},
     ]
 
 
 def get_runtime_handles() -> list[dict[str, str]]:
     return [
-        {"Handle": "video_reader_port", "State": "Not connected"},
+        {"Handle": "video_asset_backend", "State": "FFmpeg metadata and frame retrieval"},
         {"Handle": "segmenter_port", "State": "Reserved for future adapter"},
-        {"Handle": "preview_renderer", "State": "UI shell placeholder only"},
+        {"Handle": "preview_renderer", "State": "Placeholder only"},
         {"Handle": "diagnostic_feed", "State": "Mock session data"},
     ]
 
@@ -180,7 +162,7 @@ def get_runtime_handles() -> list[dict[str, str]]:
 def get_runtime_snapshot() -> list[dict[str, str]]:
     return [
         {"Item": "Queue State", "Value": "Idle"},
-        {"Item": "Preview Ticket", "Value": "preview-shell-0007"},
+        {"Item": "Source Transport", "Value": "Single-asset timeline active"},
         {"Item": "Mask Pipeline", "Value": "Not initialized"},
         {"Item": "Diagnostics Feed", "Value": "Mocked runtime snapshot"},
     ]
