@@ -9,6 +9,8 @@ from src.application.infrastructure.logging.log_levels import LogLevel, install_
 
 class CorrelationIdFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
+        if CorrelationIdManager.get_correlation_id() is None:
+            CorrelationIdManager.init_correlation_id()
         record.correlation_id = CorrelationIdManager.get_correlation_id() or "-"
         return True
 
