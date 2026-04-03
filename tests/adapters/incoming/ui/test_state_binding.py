@@ -163,8 +163,9 @@ class StateBindingTests(unittest.TestCase):
             prompt_entries=[],
             last_action="Seeded state",
         )
+        metadata_execute = Mock(return_value=metadata)
         fake_backend = types.SimpleNamespace(
-            get_video_asset_metadata=types.SimpleNamespace(execute=Mock(return_value=metadata))
+            get_video_asset_metadata=types.SimpleNamespace(execute=metadata_execute)
         )
 
         with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)), patch.object(
@@ -180,6 +181,62 @@ class StateBindingTests(unittest.TestCase):
         self.assertEqual(session_state.current_frame_image_bytes, b"frame-bytes")
         self.assertEqual(session_state.current_frame_request_key, ("asset-1", 12))
         self.assertFalse(session_state.playback_running)
+        metadata_execute.assert_not_called()
+
+    def test_register_video_selection_ignores_empty_uploader_when_source_is_active(self) -> None:
+        session_state = _SessionState(
+            video_loaded=True,
+            video_name="clip.mp4",
+            video_mime_type="video/mp4",
+            source_video_bytes=b"same-video",
+            video_upload_signature="fingerprint-1",
+            source_fingerprint="fingerprint-1",
+            asset_id="asset-1",
+            active_asset_id="asset-1",
+            active_video_name="clip.mp4",
+            active_source_payload=b"same-video",
+            video_fps=24.0,
+            video_frame_count=120,
+            video_duration_seconds=5.0,
+            video_width=640,
+            video_height=360,
+            current_frame_index=12,
+            current_frame_timestamp_seconds=0.5,
+            current_frame_image_bytes=b"frame-bytes",
+            current_frame_image_mime_type="image/png",
+            current_frame_width=640,
+            current_frame_height=360,
+            current_frame_request_key=("asset-1", 12),
+            frame_error_message=None,
+            playback_running=True,
+            playback_anchor_frame_index=10,
+            playback_started_at_seconds=123.0,
+            ui_generation=4,
+            playback_generation=9,
+            prompt_entries=[],
+            last_action="Seeded state",
+        )
+        fake_backend = types.SimpleNamespace(
+            register_video_asset=types.SimpleNamespace(execute=Mock()),
+            get_video_asset_metadata=types.SimpleNamespace(execute=Mock()),
+        )
+
+        with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)), patch.object(
+            ui_state,
+            "get_video_asset_backend",
+            return_value=fake_backend,
+        ):
+            changed = ui_state.register_video_selection(None)
+
+        self.assertFalse(changed)
+        self.assertTrue(session_state.video_loaded)
+        self.assertEqual(session_state.asset_id, "asset-1")
+        self.assertEqual(session_state.active_asset_id, "asset-1")
+        self.assertTrue(session_state.playback_running)
+        self.assertEqual(session_state.ui_generation, 4)
+        self.assertEqual(session_state.playback_generation, 9)
+        fake_backend.register_video_asset.execute.assert_not_called()
+        fake_backend.get_video_asset_metadata.execute.assert_not_called()
 
     def test_register_video_selection_preserves_playback_state_on_same_upload_rerun(self) -> None:
         uploaded_bytes = b"same-video"
@@ -224,8 +281,9 @@ class StateBindingTests(unittest.TestCase):
             prompt_entries=[],
             last_action="Seeded state",
         )
+        metadata_execute = Mock(return_value=metadata)
         fake_backend = types.SimpleNamespace(
-            get_video_asset_metadata=types.SimpleNamespace(execute=Mock(return_value=metadata))
+            get_video_asset_metadata=types.SimpleNamespace(execute=metadata_execute)
         )
 
         with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)), patch.object(
@@ -240,6 +298,116 @@ class StateBindingTests(unittest.TestCase):
         self.assertEqual(session_state.playback_anchor_frame_index, 10)
         self.assertEqual(session_state.playback_started_at_seconds, 123.0)
         self.assertEqual(session_state.current_frame_request_key, ("asset-1", 12))
+        metadata_execute.assert_not_called()
+
+    def test_register_video_selection_refreshes_metadata_for_same_upload_when_cached_state_is_incomplete(self) -> None:
+        uploaded_bytes = b"same-video"
+        upload_signature = hashlib.sha256(uploaded_bytes).hexdigest()
+        uploaded_file = _UploadedFile(
+            name="clip.mp4",
+            mime_type="video/mp4",
+            payload=uploaded_bytes,
+        )
+        metadata = VideoAssetMetadata(
+            asset_id="asset-1",
+            filename="clip.mp4",
+            fps=24.0,
+            frame_count=120,
+            duration_seconds=5.0,
+            width=640,
+            height=360,
+        )
+        session_state = _SessionState(
+            video_loaded=True,
+            video_name="clip.mp4",
+            video_mime_type="video/mp4",
+            source_video_bytes=uploaded_bytes,
+            video_upload_signature=upload_signature,
+            asset_id="asset-1",
+            video_fps=0.0,
+            video_frame_count=0,
+            video_duration_seconds=0.0,
+            video_width=0,
+            video_height=0,
+            current_frame_index=12,
+            current_frame_timestamp_seconds=0.5,
+            current_frame_image_bytes=b"frame-bytes",
+            current_frame_image_mime_type="image/png",
+            current_frame_width=0,
+            current_frame_height=0,
+            current_frame_request_key=("asset-1", 12),
+            frame_error_message=None,
+            playback_running=False,
+            playback_anchor_frame_index=None,
+            playback_started_at_seconds=None,
+            prompt_entries=[],
+            last_action="Seeded state",
+        )
+        metadata_execute = Mock(return_value=metadata)
+        fake_backend = types.SimpleNamespace(
+            get_video_asset_metadata=types.SimpleNamespace(execute=metadata_execute)
+        )
+
+        with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)), patch.object(
+            ui_state,
+            "get_video_asset_backend",
+            return_value=fake_backend,
+        ):
+            changed = ui_state.register_video_selection(uploaded_file)
+
+        self.assertFalse(changed)
+        metadata_execute.assert_called_once_with("asset-1")
+        self.assertEqual(session_state.video_fps, 24.0)
+        self.assertEqual(session_state.video_frame_count, 120)
+        self.assertEqual(session_state.video_width, 640)
+        self.assertEqual(session_state.video_height, 360)
+
+    def test_remove_active_video_source_clears_source_and_bumps_generations(self) -> None:
+        session_state = _SessionState(
+            video_loaded=True,
+            video_name="clip.mp4",
+            video_mime_type="video/mp4",
+            source_video_bytes=b"same-video",
+            video_upload_signature="fingerprint-1",
+            source_fingerprint="fingerprint-1",
+            asset_id="asset-1",
+            active_asset_id="asset-1",
+            active_video_name="clip.mp4",
+            active_source_payload=b"same-video",
+            video_fps=24.0,
+            video_frame_count=120,
+            video_duration_seconds=5.0,
+            video_width=640,
+            video_height=360,
+            current_frame_index=12,
+            current_frame_timestamp_seconds=0.5,
+            current_frame_image_bytes=b"frame-bytes",
+            current_frame_image_mime_type="image/png",
+            current_frame_width=640,
+            current_frame_height=360,
+            current_frame_request_key=("asset-1", 12),
+            frame_error_message=None,
+            playback_running=True,
+            playback_anchor_frame_index=10,
+            playback_started_at_seconds=123.0,
+            ui_generation=4,
+            playback_generation=9,
+            prompt_entries=[],
+            last_action="Seeded state",
+        )
+
+        with patch.object(ui_state, "st", types.SimpleNamespace(session_state=session_state)):
+            changed = ui_state.remove_active_video_source()
+
+        self.assertTrue(changed)
+        self.assertFalse(session_state.video_loaded)
+        self.assertIsNone(session_state.asset_id)
+        self.assertIsNone(session_state.active_asset_id)
+        self.assertIsNone(session_state.source_fingerprint)
+        self.assertFalse(session_state.playback_running)
+        self.assertEqual(session_state.ui_generation, 5)
+        self.assertEqual(session_state.playback_generation, 10)
+        self.assertEqual(session_state.last_action, "Removed source asset")
 
 
 if __name__ == "__main__":

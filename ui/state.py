@@ -45,6 +45,10 @@ def initialize_state() -> None:
         "video_mime_type": None,
         "source_video_bytes": None,
         "video_upload_signature": None,
+        "active_asset_id": None,
+        "active_video_name": None,
+        "active_source_payload": None,
+        "source_fingerprint": None,
         "asset_id": None,
         "video_fps": 0.0,
         "video_frame_count": 0,
@@ -62,38 +66,58 @@ def initialize_state() -> None:
         "playback_running": False,
         "playback_anchor_frame_index": None,
         "playback_started_at_seconds": None,
+        "ui_generation": 0,
+        "playback_generation": 0,
         "last_action": "UI session initialized",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+    _synchronize_explicit_source_state()
     LOGGER.debug("Session state initialized video_loaded=%s asset_id=%s", st.session_state.video_loaded, st.session_state.asset_id)
 
 
 def register_video_selection(uploaded_file: Any | None) -> bool:
     if uploaded_file is None:
-        if st.session_state.video_loaded:
-            LOGGER.info("Clearing current source selection asset_id=%s video_name=%s", st.session_state.asset_id, st.session_state.video_name)
-            _clear_video_asset_state()
-            st.session_state.last_action = "Cleared source asset selection"
-            return True
+        if _has_active_source():
+            LOGGER.info(
+                "Source removal skipped because uploader is empty asset_id=%s video_name=%s",
+                _current_active_asset_id(),
+                _current_active_video_name(),
+            )
+            st.session_state.last_action = "Kept active source while uploader was empty"
         return False
 
     uploaded_bytes = uploaded_file.getvalue()
     upload_signature = hashlib.sha256(uploaded_bytes).hexdigest()
     backend = get_video_asset_backend()
     if (
-        upload_signature == st.session_state.video_upload_signature
-        and uploaded_file.name == st.session_state.video_name
-        and st.session_state.asset_id is not None
+        upload_signature == _current_source_fingerprint()
+        and uploaded_file.name == _current_active_video_name()
+        and _current_active_asset_id() is not None
     ):
+        _refresh_source_binding(
+            video_name=uploaded_file.name,
+            mime_type=uploaded_file.type or "video/mp4",
+            source_video_bytes=uploaded_bytes,
+            upload_signature=upload_signature,
+        )
+        if _has_complete_video_metadata():
+            LOGGER.info(
+                "Reusing active source asset_id=%s video_name=%s fingerprint=%s",
+                _current_active_asset_id(),
+                uploaded_file.name,
+                upload_signature,
+            )
+            st.session_state.last_action = f"Reused source asset {uploaded_file.name}"
+            return False
         try:
             LOGGER.debug(
                 "Refreshing existing source selection asset_id=%s video_name=%s",
-                st.session_state.asset_id,
+                _current_active_asset_id(),
                 uploaded_file.name,
             )
-            metadata = backend.get_video_asset_metadata.execute(st.session_state.asset_id)
+            metadata = backend.get_video_asset_metadata.execute(_current_active_asset_id())
             _refresh_video_metadata(
                 metadata=metadata,
                 mime_type=uploaded_file.type or "video/mp4",
@@ -105,7 +129,7 @@ def register_video_selection(uploaded_file: Any | None) -> bool:
             LOGGER.warning(
                 "Stored asset metadata missing; re-registering uploaded file video_name=%s asset_id=%s",
                 uploaded_file.name,
-                st.session_state.asset_id,
+                _current_active_asset_id(),
             )
             pass
 
@@ -121,14 +145,36 @@ def register_video_selection(uploaded_file: Any | None) -> bool:
         upload_signature=upload_signature,
         reset_prompts=True,
     )
+    _bump_ui_generation("source_registered")
+    _bump_playback_generation("source_registered")
     LOGGER.info(
-        "Registered new source asset asset_id=%s video_name=%s frame_count=%s fps=%.3f",
+        "Source registered asset_id=%s video_name=%s frame_count=%s fps=%.3f fingerprint=%s",
         metadata.asset_id,
         metadata.filename,
         metadata.frame_count,
         metadata.fps,
+        upload_signature,
     )
     st.session_state.last_action = f"Registered backend source asset {metadata.filename}"
+    return True
+
+
+def remove_active_video_source() -> bool:
+    if not _has_active_source():
+        LOGGER.info("Source removal skipped because no active source exists")
+        st.session_state.last_action = "Skipped source removal"
+        return False
+
+    LOGGER.info(
+        "Source removal requested asset_id=%s video_name=%s",
+        _current_active_asset_id(),
+        _current_active_video_name(),
+    )
+    _clear_video_asset_state()
+    _bump_ui_generation("source_removed")
+    _bump_playback_generation("source_removed")
+    st.session_state.last_action = "Removed source asset"
+    LOGGER.info("Source removal executed")
     return True
 
 
@@ -137,6 +183,7 @@ def sync_playback_position(now_seconds: float | None = None) -> None:
         return
 
     previous_frame_index = int(st.session_state.current_frame_index)
+    was_running = bool(st.session_state.playback_running)
     progress = advance_playback_position(
         playback_running=st.session_state.playback_running,
         current_frame_index=st.session_state.current_frame_index,
@@ -149,6 +196,8 @@ def sync_playback_position(now_seconds: float | None = None) -> None:
     _apply_playback_progress(progress)
     st.session_state.current_frame_request_key = None
     st.session_state.frame_error_message = None
+    if was_running and not progress.playback_running:
+        _bump_playback_generation("playback_stopped")
     LOGGER.debug(
         "Synchronized playback frame_index=%s previous_frame_index=%s playback_running=%s",
         progress.frame_index,
@@ -162,7 +211,8 @@ def sync_playback_position(now_seconds: float | None = None) -> None:
 
 
 def ensure_current_frame_loaded() -> None:
-    if not st.session_state.video_loaded or st.session_state.asset_id is None:
+    active_asset_id = _current_active_asset_id()
+    if not st.session_state.video_loaded or active_asset_id is None:
         st.session_state.current_frame_image_bytes = None
         st.session_state.current_frame_image_mime_type = None
         st.session_state.current_frame_request_key = None
@@ -170,16 +220,16 @@ def ensure_current_frame_loaded() -> None:
         return
 
     frame_index = clamp_current_frame_index(st.session_state.current_frame_index)
-    request_key = (st.session_state.asset_id, frame_index)
+    request_key = (active_asset_id, frame_index)
     if request_key == st.session_state.current_frame_request_key and st.session_state.current_frame_image_bytes:
-        LOGGER.debug("Skipping frame reload for cached request asset_id=%s frame_index=%s", st.session_state.asset_id, frame_index)
+        LOGGER.debug("Skipping frame reload for cached request asset_id=%s frame_index=%s", active_asset_id, frame_index)
         return
 
     backend = get_video_asset_backend()
     try:
-        LOGGER.debug("Loading frame asset_id=%s frame_index=%s", st.session_state.asset_id, frame_index)
+        LOGGER.debug("Loading frame asset_id=%s frame_index=%s", active_asset_id, frame_index)
         frame = backend.get_video_frame.execute(
-            asset_id=st.session_state.asset_id,
+            asset_id=active_asset_id,
             frame_index=frame_index,
         )
     except VideoFrameExtractionError as error:
@@ -191,7 +241,8 @@ def ensure_current_frame_loaded() -> None:
         st.session_state.playback_started_at_seconds = None
         st.session_state.frame_error_message = str(error)
         st.session_state.last_action = "Frame loading failed"
-        LOGGER.exception("Frame loading failed asset_id=%s frame_index=%s", st.session_state.asset_id, frame_index)
+        _bump_playback_generation("frame_load_failed")
+        LOGGER.exception("Frame loading failed asset_id=%s frame_index=%s", active_asset_id, frame_index)
         return
 
     st.session_state.current_frame_index = frame.frame_index
@@ -204,7 +255,7 @@ def ensure_current_frame_loaded() -> None:
     st.session_state.frame_error_message = None
     LOGGER.debug(
         "Loaded frame asset_id=%s resolved_frame_index=%s timestamp=%.3f size=%sx%s",
-        st.session_state.asset_id,
+        active_asset_id,
         frame.frame_index,
         frame.timestamp_seconds,
         frame.width,
@@ -265,6 +316,7 @@ def toggle_playback() -> None:
         return
 
     now_seconds = time.monotonic()
+    was_running = bool(st.session_state.playback_running)
     if st.session_state.playback_running:
         sync_playback_position(now_seconds=now_seconds)
         progress = stop_playback(
@@ -283,6 +335,10 @@ def toggle_playback() -> None:
     _apply_playback_progress(progress)
     st.session_state.current_frame_request_key = None
     st.session_state.frame_error_message = None
+    if not was_running and progress.playback_running:
+        _bump_playback_generation("playback_started")
+    elif was_running and not progress.playback_running:
+        _bump_playback_generation("playback_stopped")
     state_label = "Running" if progress.playback_running else "Paused"
     LOGGER.info(
         "Playback toggled new_state=%s frame_index=%s anchor=%s started_at=%s",
@@ -300,6 +356,10 @@ def get_playback_interval_seconds() -> float:
         return 0.25
     preview_fps = min(fps, 4.0)
     return max(1.0 / preview_fps, 0.15)
+
+
+def get_source_upload_widget_key() -> str:
+    return f"source_video_upload_{int(st.session_state.ui_generation)}"
 
 
 def add_prompt() -> None:
@@ -366,10 +426,13 @@ def _apply_video_metadata(
         reset_prompts,
     )
     st.session_state.video_loaded = True
-    st.session_state.video_name = metadata.filename
-    st.session_state.video_mime_type = mime_type
-    st.session_state.source_video_bytes = source_video_bytes
-    st.session_state.video_upload_signature = upload_signature
+    _refresh_source_binding(
+        video_name=metadata.filename,
+        mime_type=mime_type,
+        source_video_bytes=source_video_bytes,
+        upload_signature=upload_signature,
+    )
+    st.session_state.active_asset_id = metadata.asset_id
     st.session_state.asset_id = metadata.asset_id
     st.session_state.video_fps = metadata.fps
     st.session_state.video_frame_count = metadata.frame_count
@@ -413,10 +476,13 @@ def _refresh_video_metadata(
         st.session_state.playback_running,
     )
     st.session_state.video_loaded = True
-    st.session_state.video_name = metadata.filename
-    st.session_state.video_mime_type = mime_type
-    st.session_state.source_video_bytes = source_video_bytes
-    st.session_state.video_upload_signature = upload_signature
+    _refresh_source_binding(
+        video_name=metadata.filename,
+        mime_type=mime_type,
+        source_video_bytes=source_video_bytes,
+        upload_signature=upload_signature,
+    )
+    st.session_state.active_asset_id = metadata.asset_id
     st.session_state.asset_id = metadata.asset_id
     st.session_state.video_fps = metadata.fps
     st.session_state.video_frame_count = metadata.frame_count
@@ -452,6 +518,75 @@ def _apply_playback_progress(progress: PlaybackProgress) -> None:
     st.session_state.playback_started_at_seconds = progress.playback_started_at_seconds
 
 
+def _refresh_source_binding(
+    *,
+    video_name: str,
+    mime_type: str | None,
+    source_video_bytes: bytes | None,
+    upload_signature: str | None,
+) -> None:
+    st.session_state.active_video_name = video_name
+    st.session_state.active_source_payload = source_video_bytes
+    st.session_state.source_fingerprint = upload_signature
+    st.session_state.video_name = video_name
+    st.session_state.video_mime_type = mime_type
+    st.session_state.source_video_bytes = source_video_bytes
+    st.session_state.video_upload_signature = upload_signature
+
+
+def _has_complete_video_metadata() -> bool:
+    return bool(
+        st.session_state.video_loaded
+        and _current_active_asset_id() is not None
+        and float(st.session_state.video_fps) > 0
+        and int(st.session_state.video_frame_count) > 0
+        and int(st.session_state.video_width) > 0
+        and int(st.session_state.video_height) > 0
+    )
+
+
+def _has_active_source() -> bool:
+    return _current_active_asset_id() is not None
+
+
+def _current_active_asset_id() -> str | None:
+    return st.session_state.get("active_asset_id") or st.session_state.get("asset_id")
+
+
+def _current_active_video_name() -> str | None:
+    return st.session_state.get("active_video_name") or st.session_state.get("video_name")
+
+
+def _current_source_fingerprint() -> str | None:
+    return st.session_state.get("source_fingerprint") or st.session_state.get("video_upload_signature")
+
+
+def _synchronize_explicit_source_state() -> None:
+    if st.session_state.active_asset_id is None and st.session_state.asset_id is not None:
+        st.session_state.active_asset_id = st.session_state.asset_id
+    if st.session_state.active_video_name is None and st.session_state.video_name != "No video selected":
+        st.session_state.active_video_name = st.session_state.video_name
+    if st.session_state.active_source_payload is None and st.session_state.source_video_bytes is not None:
+        st.session_state.active_source_payload = st.session_state.source_video_bytes
+    if st.session_state.source_fingerprint is None and st.session_state.video_upload_signature is not None:
+        st.session_state.source_fingerprint = st.session_state.video_upload_signature
+
+
+def _bump_ui_generation(reason: str) -> int:
+    return _bump_generation("ui_generation", reason)
+
+
+def _bump_playback_generation(reason: str) -> int:
+    return _bump_generation("playback_generation", reason)
+
+
+def _bump_generation(field_name: str, reason: str) -> int:
+    next_value = int(st.session_state.get(field_name, 0)) + 1
+    st.session_state[field_name] = next_value
+    LOGGER.info("Generation bumped field=%s new_value=%s reason=%s", field_name, next_value, reason)
+    return next_value
+
+
 def _clear_video_asset_state() -> None:
     LOGGER.debug("Resetting video asset state")
     st.session_state.video_loaded = False
@@ -459,6 +594,10 @@ def _clear_video_asset_state() -> None:
     st.session_state.video_mime_type = None
     st.session_state.source_video_bytes = None
     st.session_state.video_upload_signature = None
+    st.session_state.active_asset_id = None
+    st.session_state.active_video_name = None
+    st.session_state.active_source_payload = None
+    st.session_state.source_fingerprint = None
     st.session_state.asset_id = None
     st.session_state.video_fps = 0.0
     st.session_state.video_frame_count = 0

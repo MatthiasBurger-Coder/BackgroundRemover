@@ -48,16 +48,59 @@ def main() -> None:
         st.session_state.current_frame_index,
     )
     if st.session_state.playback_running:
-        render_live_operator_workspace(failure_cases)
+        render_live_operator_workspace(
+            failure_cases,
+            expected_ui_generation=int(st.session_state.ui_generation),
+            expected_playback_generation=int(st.session_state.playback_generation),
+        )
     else:
         render_operator_workspace(failure_cases)
 
 
 @st.fragment(run_every=0.25)
-def render_live_operator_workspace(failure_cases) -> None:
+def render_live_operator_workspace(
+    failure_cases,
+    *,
+    expected_ui_generation: int,
+    expected_playback_generation: int,
+) -> None:
     """Render the operator workspace with a fragment-scoped playback cadence while playing."""
-    LOGGER.debug("Rendering live operator workspace fragment")
+    if _fragment_generation_is_stale(
+        expected_ui_generation=expected_ui_generation,
+        expected_playback_generation=expected_playback_generation,
+    ):
+        LOGGER.info(
+            "Stale fragment ignored expected_ui_generation=%s current_ui_generation=%s expected_playback_generation=%s current_playback_generation=%s",
+            expected_ui_generation,
+            int(st.session_state.ui_generation),
+            expected_playback_generation,
+            int(st.session_state.playback_generation),
+        )
+        st.rerun(scope="app")
+    if not st.session_state.playback_running:
+        LOGGER.debug("Stopping live operator workspace fragment because playback is paused")
+        st.rerun(scope="app")
+    LOGGER.debug(
+        "Rendering live operator workspace fragment ui_generation=%s playback_generation=%s",
+        int(st.session_state.ui_generation),
+        int(st.session_state.playback_generation),
+    )
     render_operator_workspace(failure_cases)
+    if _fragment_generation_is_stale(
+        expected_ui_generation=expected_ui_generation,
+        expected_playback_generation=expected_playback_generation,
+    ):
+        LOGGER.info(
+            "Stale fragment ignored after render expected_ui_generation=%s current_ui_generation=%s expected_playback_generation=%s current_playback_generation=%s",
+            expected_ui_generation,
+            int(st.session_state.ui_generation),
+            expected_playback_generation,
+            int(st.session_state.playback_generation),
+        )
+        st.rerun(scope="app")
+    if not st.session_state.playback_running:
+        LOGGER.debug("Stopping live operator workspace fragment after playback state changed")
+        st.rerun(scope="app")
 
 
 def render_operator_workspace(failure_cases) -> None:
@@ -97,6 +140,17 @@ def render_workspace_header() -> None:
     header_columns[1].markdown(f"**Frame**  \n{st.session_state.current_frame_index:04d}")
     header_columns[2].markdown(f"**Timecode**  \n{format_timecode(st.session_state.current_frame_timestamp_seconds)}")
     header_columns[3].markdown(f"**Prompts**  \n{len(st.session_state.prompt_entries)}")
+
+
+def _fragment_generation_is_stale(
+    *,
+    expected_ui_generation: int,
+    expected_playback_generation: int,
+) -> bool:
+    return bool(
+        int(st.session_state.ui_generation) != expected_ui_generation
+        or int(st.session_state.playback_generation) != expected_playback_generation
+    )
 
 
 if __name__ == "__main__":
