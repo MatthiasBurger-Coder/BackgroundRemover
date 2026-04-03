@@ -28,3 +28,4 @@ dist/
 
 # Notebook checkpoints
 .ipynb_checkpoints/
+/log.log
