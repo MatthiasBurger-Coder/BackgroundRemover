@@ -1,45 +1,30 @@
 [importlinter]
-# Wenn dein Quellcode in src/application liegt, sollte root_package 'application' sein,
-# sofern src im PYTHONPATH liegt (üblich bei src-Layout).
-root_package = application
+root_package = src
 include_external_packages = False
 
 [importlinter:contract:hexagonal_layers]
 name = Hexagonal layers depend inward only
 type = layers
-# Die Reihenfolge von außen (oben) nach innen (unten).
-# Jede Schicht darf nur Schichten DARUNTER importieren.
+# Pfade müssen relativ zum root_package (src) sein
 layers =
-    infrastructure
-    adapters
-    application
-    ports
-    domain
-# Wichtig: Wenn root_package=application, fallen die 'src.application.' Präfixe hier weg.
+    application.infrastructure
+    application.adapters
+    application.application
+    application.ports
+    application.domain
 
 [importlinter:contract:incoming_outgoing_adapter_separation]
 name = Incoming adapters must not import outgoing adapters
 type = forbidden
 source_modules =
-    application.adapters.incoming
+    src.application.adapters.incoming
 forbidden_modules =
-    application.adapters.outgoing
+    src.application.adapters.outgoing
 
 [importlinter:contract:outgoing_incoming_adapter_separation]
 name = Outgoing adapters must not import incoming adapters
 type = forbidden
 source_modules =
-    application.adapters.outgoing
+    src.application.adapters.outgoing
 forbidden_modules =
-    application.adapters.incoming
-
-[importlinter:contract:ports_isolation]
-name = Ports must only depend on Domain
-type = forbidden
-source_modules =
-    application.ports
-forbidden_modules =
-    application.application
-    application.adapters
-    application.infrastructure
-
+    src.application.adapters.incoming
