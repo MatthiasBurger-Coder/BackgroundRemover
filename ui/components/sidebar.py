@@ -16,7 +16,7 @@ def render_sidebar(selected_frame: FrameLabel) -> None:
         uploaded_file = st.file_uploader(
             "Original video",
             type=["mp4", "mov", "mkv", "avi"],
-            help="This control records only placeholder asset information.",
+            help="Upload a source video for session-local playback in the Original Video tab.",
         )
         register_video_selection(uploaded_file)
 

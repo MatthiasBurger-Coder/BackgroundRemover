@@ -148,7 +148,7 @@ def get_failure_cases() -> list[FailureCase]:
 
 
 def get_workspace_info(video_loaded: bool, video_name: str) -> list[dict[str, str]]:
-    source_label = "Uploaded placeholder source" if video_loaded else "Mock internal session"
+    source_label = "Uploaded session asset" if video_loaded else "Mock internal session"
     active_video = video_name if video_loaded else "operator_take_07_placeholder.mp4"
     return [
         {"Field": "Workspace", "Value": "Mask Preview Lab"},

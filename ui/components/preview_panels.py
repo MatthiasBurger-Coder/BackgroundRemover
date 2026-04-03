@@ -9,24 +9,12 @@ from ui.mock_data import FrameLabel
 
 def render_preview_panels(selected_frame: FrameLabel) -> None:
     st.subheader("View Workspace")
-    st.caption("All views below are placeholder-only and simulate the future operator workspace.")
+    st.caption("The Original Video tab can display the uploaded source video. The remaining views stay placeholder-only.")
 
     original_tab, mask_tab, preview_tab = st.tabs(["Original Video", "Mask View", "Masked Preview"])
 
     with original_tab:
-        _render_view_placeholder(
-            title="Original Video View",
-            summary_lines=[
-                f"Active frame: {selected_frame.index:04d}",
-                f"Timecode: {selected_frame.timecode}",
-                f"Frame label: {selected_frame.label}",
-                "Viewport status: source media not connected in UI shell.",
-            ],
-            inspection_lines=[
-                "Intended use: operator verifies subject position and framing before prompting.",
-                "Expected future integration: decoded frame transport from the video reader adapter.",
-            ],
-        )
+        _render_original_video_panel(selected_frame)
 
     with mask_tab:
         _render_view_placeholder(
@@ -65,14 +53,42 @@ def _render_view_placeholder(
     summary_lines: list[str],
     inspection_lines: list[str],
 ) -> None:
-    st.markdown(f"**{title}**")
-    metadata_columns = st.columns(len(summary_lines))
-    for column, line in zip(metadata_columns, summary_lines, strict=False):
-        label, value = line.split(": ", maxsplit=1)
-        column.metric(label, value)
+    _render_view_placeholder_header(title=title, summary_lines=summary_lines)
 
     with st.container(border=True):
         st.markdown("**Viewport Placeholder**")
         st.write("No real media is rendered in this prototype.")
         for line in inspection_lines:
             st.write(line)
+
+
+def _render_original_video_panel(selected_frame: FrameLabel) -> None:
+    viewport_status = "uploaded source available" if st.session_state.video_loaded else "waiting for uploaded source"
+    _render_view_placeholder_header(
+        title="Original Video View",
+        summary_lines=[
+            f"Active frame: {selected_frame.index:04d}",
+            f"Timecode: {selected_frame.timecode}",
+            f"Frame label: {selected_frame.label}",
+            f"Viewport status: {viewport_status}",
+        ],
+    )
+
+    with st.container(border=True):
+        st.markdown("**Source Video Player**")
+        if st.session_state.video_loaded and st.session_state.video_bytes is not None:
+            st.caption(f"Uploaded asset: {st.session_state.video_name}")
+            st.video(st.session_state.video_bytes, format=st.session_state.video_mime_type)
+            st.write("Operator use: review the uploaded source video while setting prompts and checking frame context.")
+        else:
+            st.info("Upload an original video in the sidebar to display it here.")
+            st.write("No source video is currently attached to this session.")
+            st.write("Operator use: review the uploaded source video while setting prompts and checking frame context.")
+
+
+def _render_view_placeholder_header(title: str, summary_lines: list[str]) -> None:
+    st.markdown(f"**{title}**")
+    metadata_columns = st.columns(len(summary_lines))
+    for column, line in zip(metadata_columns, summary_lines, strict=False):
+        label, value = line.split(": ", maxsplit=1)
+        column.metric(label, value)

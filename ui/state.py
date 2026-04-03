@@ -24,6 +24,8 @@ def initialize_state(frame_catalog: list[FrameLabel]) -> None:
         "selected_error_index": 0,
         "video_loaded": False,
         "video_name": "No video selected",
+        "video_bytes": None,
+        "video_mime_type": None,
         "last_action": "UI session initialized",
     }
     for key, value in defaults.items():
@@ -53,13 +55,25 @@ def register_video_selection(uploaded_file: Any | None) -> None:
         if st.session_state.video_loaded:
             st.session_state.video_loaded = False
             st.session_state.video_name = "No video selected"
+            st.session_state.video_bytes = None
+            st.session_state.video_mime_type = None
             st.session_state.last_action = "Cleared video selection"
         return
 
-    if uploaded_file.name != st.session_state.video_name or not st.session_state.video_loaded:
+    uploaded_bytes = uploaded_file.getvalue()
+    uploaded_mime_type = uploaded_file.type or "video/mp4"
+
+    if (
+        uploaded_file.name != st.session_state.video_name
+        or uploaded_bytes != st.session_state.video_bytes
+        or uploaded_mime_type != st.session_state.video_mime_type
+        or not st.session_state.video_loaded
+    ):
         st.session_state.video_loaded = True
         st.session_state.video_name = uploaded_file.name
-        st.session_state.last_action = f"Loaded placeholder asset {uploaded_file.name}"
+        st.session_state.video_bytes = uploaded_bytes
+        st.session_state.video_mime_type = uploaded_mime_type
+        st.session_state.last_action = f"Loaded source video {uploaded_file.name}"
 
 
 def add_prompt(frame_catalog: list[FrameLabel]) -> None:
