@@ -65,6 +65,14 @@ def _render_view_placeholder(
 def _render_mask_workbench_panel() -> None:
     workbench_state = "backend frame bound" if st.session_state.video_loaded else "waiting for source asset"
     overlay_state = "debug overlay on" if st.session_state.show_debug_overlay else "debug overlay off"
+    empty_lines = [
+        "Upload a source asset and use Source Context transport controls to bind a work frame.",
+        "The workbench will display the backend-selected frame here for future prompt placement and overlays.",
+        "No mask generation or authoring logic is active yet in this slice.",
+    ]
+    if st.session_state.frame_error_message:
+        empty_lines.insert(0, f"Frame loading error: {st.session_state.frame_error_message}")
+
     render_workspace_image_panel(
         title="Mask Workbench",
         metadata_items=[
@@ -76,11 +84,7 @@ def _render_mask_workbench_panel() -> None:
         image_bytes=st.session_state.current_frame_image_bytes,
         mime_type=st.session_state.current_frame_image_mime_type,
         empty_title="Mask Authoring Workspace",
-        empty_lines=[
-            "Upload a source asset and use Source Context transport controls to bind a work frame.",
-            "The workbench will display the backend-selected frame here for future prompt placement and overlays.",
-            "No mask generation or authoring logic is active yet in this slice.",
-        ],
+        empty_lines=empty_lines,
         panel_note=(
             f"Workbench frame source: {st.session_state.video_name} | "
             "Future use: prompt interaction, overlay editing, mask layer review."

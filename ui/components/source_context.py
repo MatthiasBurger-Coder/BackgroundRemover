@@ -29,6 +29,8 @@ def render_source_context_panel() -> None:
 
     with st.container(border=True):
         st.markdown(f"**Source Asset**  \n{st.session_state.video_name}")
+        if st.session_state.frame_error_message:
+            st.warning(st.session_state.frame_error_message)
         render_transport_controls(disabled=st.session_state.video_frame_count <= 0)
         _render_timeline_ruler()
         st.slider(

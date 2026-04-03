@@ -66,40 +66,20 @@ class FfmpegVideoAssetAdapter:
         asset = self._get_registered_asset(asset_id)
         metadata = asset.metadata
         clamped_frame_index = metadata.clamped_frame_index(frame_index)
-        timestamp_seconds = clamped_frame_index / metadata.fps if metadata.fps > 0 else 0.0
-
-        command = [
-            self._ffmpeg_path,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(asset.file_path),
-            "-ss",
-            f"{timestamp_seconds:.6f}",
-            "-frames:v",
-            "1",
-            "-f",
-            "image2pipe",
-            "-vcodec",
-            "png",
-            "-",
-        ]
-        completed = subprocess.run(command, capture_output=True, check=False)
-        if completed.returncode != 0 or not completed.stdout:
-            raise VideoFrameExtractionError(
-                f"Failed to extract frame {clamped_frame_index} from asset {asset_id}: "
-                f"{completed.stderr.decode('utf-8', errors='replace').strip()}"
-            )
+        image_bytes, resolved_frame_index = self._extract_frame_png(
+            file_path=asset.file_path,
+            requested_frame_index=clamped_frame_index,
+            asset_id=asset_id,
+        )
 
         return VideoFrame(
             asset_id=asset_id,
-            frame_index=clamped_frame_index,
-            timestamp_seconds=timestamp_seconds,
+            frame_index=resolved_frame_index,
+            timestamp_seconds=resolved_frame_index / metadata.fps if metadata.fps > 0 else 0.0,
             mime_type="image/png",
             width=metadata.width,
             height=metadata.height,
-            image_bytes=completed.stdout,
+            image_bytes=image_bytes,
         )
 
     def _probe_metadata(self, *, asset_id: str, filename: str, file_path: Path) -> VideoAssetMetadata:
@@ -107,6 +87,9 @@ class FfmpegVideoAssetAdapter:
             self._ffprobe_path,
             "-v",
             "error",
+            "-count_frames",
+            "-select_streams",
+            "v:0",
             "-print_format",
             "json",
             "-show_streams",
@@ -173,7 +156,7 @@ class FfmpegVideoAssetAdapter:
         return max(duration_seconds, 0.0)
 
     def _parse_frame_count(self, video_stream: dict[str, object], duration_seconds: float, fps: float) -> int:
-        raw_frame_count = video_stream.get("nb_frames")
+        raw_frame_count = video_stream.get("nb_frames") or video_stream.get("nb_read_frames")
         try:
             if raw_frame_count not in {None, "N/A"}:
                 return max(int(raw_frame_count), 0)
@@ -182,13 +165,56 @@ class FfmpegVideoAssetAdapter:
 
         if duration_seconds <= 0 or fps <= 0:
             return 0
-        return max(int(math.ceil(duration_seconds * fps)), 1)
+        return max(int(math.floor((duration_seconds * fps) + 0.5)), 1)
 
     def _get_registered_asset(self, asset_id: str) -> _RegisteredVideoAsset:
         asset = self._assets.get(asset_id)
         if asset is None:
             raise VideoAssetNotFoundError(f"Unknown video asset: {asset_id}")
         return asset
+
+    def _extract_frame_png(
+        self,
+        *,
+        file_path: Path,
+        requested_frame_index: int,
+        asset_id: str,
+    ) -> tuple[bytes, int]:
+        frame_candidates = [requested_frame_index]
+        if requested_frame_index > 0:
+            frame_candidates.extend(
+                candidate
+                for candidate in range(requested_frame_index - 1, max(requested_frame_index - 5, -1), -1)
+            )
+
+        for candidate_frame_index in frame_candidates:
+            command = [
+                self._ffmpeg_path,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                str(file_path),
+                "-vf",
+                f"select=eq(n\\,{candidate_frame_index})",
+                "-frames:v",
+                "1",
+                "-fps_mode",
+                "vfr",
+                "-f",
+                "image2pipe",
+                "-vcodec",
+                "png",
+                "-",
+            ]
+            completed = subprocess.run(command, capture_output=True, check=False)
+            if completed.returncode == 0 and completed.stdout:
+                return completed.stdout, candidate_frame_index
+
+        raise VideoFrameExtractionError(
+            f"Failed to extract frame {requested_frame_index} from asset {asset_id}: "
+            "ffmpeg returned no image output for the requested frame window."
+        )
 
     def _cleanup_storage(self) -> None:
         shutil.rmtree(self._storage_root, ignore_errors=True)

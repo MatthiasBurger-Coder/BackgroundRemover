@@ -7,7 +7,7 @@ from typing import Any
 
 import streamlit as st
 
-from src.application.domain.errors.video_asset_errors import VideoAssetNotFoundError
+from src.application.domain.errors.video_asset_errors import VideoAssetNotFoundError, VideoFrameExtractionError
 from src.application.domain.model.video_asset import VideoAssetMetadata
 from src.application.infrastructure.wiring.video_asset_backend import get_video_asset_backend
 from ui.mock_data import PromptEntry
@@ -42,6 +42,7 @@ def initialize_state() -> None:
         "current_frame_width": 0,
         "current_frame_height": 0,
         "current_frame_request_key": None,
+        "frame_error_message": None,
         "playback_running": False,
         "last_action": "UI session initialized",
     }
@@ -98,6 +99,7 @@ def ensure_current_frame_loaded() -> None:
         st.session_state.current_frame_image_bytes = None
         st.session_state.current_frame_image_mime_type = None
         st.session_state.current_frame_request_key = None
+        st.session_state.frame_error_message = None
         return
 
     frame_index = clamp_current_frame_index(st.session_state.current_frame_index)
@@ -106,10 +108,20 @@ def ensure_current_frame_loaded() -> None:
         return
 
     backend = get_video_asset_backend()
-    frame = backend.get_video_frame.execute(
-        asset_id=st.session_state.asset_id,
-        frame_index=frame_index,
-    )
+    try:
+        frame = backend.get_video_frame.execute(
+            asset_id=st.session_state.asset_id,
+            frame_index=frame_index,
+        )
+    except VideoFrameExtractionError as error:
+        st.session_state.current_frame_image_bytes = None
+        st.session_state.current_frame_image_mime_type = None
+        st.session_state.current_frame_request_key = None
+        st.session_state.playback_running = False
+        st.session_state.frame_error_message = str(error)
+        st.session_state.last_action = "Frame loading failed"
+        return
+
     st.session_state.current_frame_index = frame.frame_index
     st.session_state.current_frame_timestamp_seconds = frame.timestamp_seconds
     st.session_state.current_frame_image_bytes = frame.image_bytes
@@ -117,6 +129,7 @@ def ensure_current_frame_loaded() -> None:
     st.session_state.current_frame_width = frame.width
     st.session_state.current_frame_height = frame.height
     st.session_state.current_frame_request_key = request_key
+    st.session_state.frame_error_message = None
 
 
 def clamp_current_frame_index(frame_index: int) -> int:
@@ -135,6 +148,7 @@ def set_current_frame_index(frame_index: int) -> None:
     st.session_state.current_frame_index = clamped_frame_index
     st.session_state.current_frame_request_key = None
     st.session_state.playback_running = False
+    st.session_state.frame_error_message = None
     st.session_state.last_action = f"Selected frame {clamped_frame_index:04d}"
 
 
@@ -262,6 +276,7 @@ def _apply_video_metadata(
     st.session_state.current_frame_width = metadata.width
     st.session_state.current_frame_height = metadata.height
     st.session_state.current_frame_request_key = None
+    st.session_state.frame_error_message = None
     st.session_state.playback_running = False
 
 
@@ -283,4 +298,5 @@ def _clear_video_asset_state() -> None:
     st.session_state.current_frame_width = 0
     st.session_state.current_frame_height = 0
     st.session_state.current_frame_request_key = None
+    st.session_state.frame_error_message = None
     st.session_state.playback_running = False
