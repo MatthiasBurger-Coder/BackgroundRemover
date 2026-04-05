@@ -1,7 +1,7 @@
 [tool.ruff]
 target-version = "py314"
 line-length = 100
-src = ["application", "ui", "tests"]
+src = ["application", "tests"]
 exclude = [".git", ".idea", ".venv", "__pycache__"]
 
 [tool.ruff.lint]
@@ -16,7 +16,7 @@ select = [
 [tool.mypy]
 python_version = "3.14"
 files = ["application"]
-exclude = "(?x)(^tests/|^ui/)"
+exclude = "(?x)(^tests/)"
 warn_unused_configs = true
 check_untyped_defs = true
 disallow_untyped_defs = true

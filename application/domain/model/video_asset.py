@@ -35,3 +35,13 @@ class VideoFrame:
     width: int
     height: int
     image_bytes: bytes
+
+
+@dataclass(frozen=True)
+class VideoAssetContent:
+    """Original uploaded video bytes served back to browser-based preview clients."""
+
+    asset_id: str
+    filename: str
+    mime_type: str
+    video_bytes: bytes

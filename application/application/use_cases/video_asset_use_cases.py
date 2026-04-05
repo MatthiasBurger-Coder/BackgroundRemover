@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from application.domain.model.video_asset import VideoAssetMetadata, VideoFrame
+from application.domain.model.video_asset import VideoAssetContent, VideoAssetMetadata, VideoFrame
 from application.ports.outgoing.video_asset_port import VideoAssetPort
 
 
@@ -40,3 +40,23 @@ class GetVideoFrameUseCase:
 
     def execute(self, *, asset_id: str, frame_index: int) -> VideoFrame:
         return self.video_asset_port.get_video_frame(asset_id, frame_index)
+
+
+@dataclass(frozen=True)
+class GetVideoContentUseCase:
+    """Load the original stored video bytes for browser-based preview playback."""
+
+    video_asset_port: VideoAssetPort
+
+    def execute(self, asset_id: str) -> VideoAssetContent:
+        return self.video_asset_port.get_video_content(asset_id)
+
+
+@dataclass(frozen=True)
+class DeleteVideoAssetUseCase:
+    """Remove a registered backend-managed video asset."""
+
+    video_asset_port: VideoAssetPort
+
+    def execute(self, asset_id: str) -> None:
+        self.video_asset_port.delete_video_asset(asset_id)

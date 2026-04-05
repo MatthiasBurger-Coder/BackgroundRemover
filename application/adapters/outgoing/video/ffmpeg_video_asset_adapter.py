@@ -20,7 +20,7 @@ from application.domain.errors.video_asset_errors import (
     VideoFrameExtractionError,
     VideoProbeError,
 )
-from application.domain.model.video_asset import VideoAssetMetadata, VideoFrame
+from application.domain.model.video_asset import VideoAssetContent, VideoAssetMetadata, VideoFrame
 
 LOGGER = logging.getLogger(__name__)
 
@@ -112,6 +112,21 @@ class FfmpegVideoAssetAdapter:
             len(image_bytes),
         )
         return frame
+
+    def get_video_content(self, asset_id: str) -> VideoAssetContent:
+        asset = self._get_registered_asset(asset_id)
+        mime_type = asset.mime_type or "video/mp4"
+        return VideoAssetContent(
+            asset_id=asset_id,
+            filename=asset.metadata.filename,
+            mime_type=mime_type,
+            video_bytes=asset.file_path.read_bytes(),
+        )
+
+    def delete_video_asset(self, asset_id: str) -> None:
+        asset = self._get_registered_asset(asset_id)
+        self._assets.pop(asset_id, None)
+        asset.file_path.unlink(missing_ok=True)
 
     def _probe_metadata(self, *, asset_id: str, filename: str, file_path: Path) -> VideoAssetMetadata:
         command = [
@@ -278,5 +293,4 @@ class FfmpegVideoAssetAdapter:
         )
 
     def _cleanup_storage(self) -> None:
-        LOGGER.debug("Cleaning up FFmpeg adapter storage_root=%s", self._storage_root)
         shutil.rmtree(self._storage_root, ignore_errors=True)

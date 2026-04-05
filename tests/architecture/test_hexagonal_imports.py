@@ -9,13 +9,15 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_ROOT = PROJECT_ROOT / "application"
 LAYER_ORDER = {
-    "infrastructure": 0,
-    "adapters": 1,
-    "application": 2,
-    "ports": 3,
-    "domain": 4,
+    "entrypoints": 0,
+    "infrastructure": 1,
+    "adapters": 2,
+    "application": 3,
+    "ports": 4,
+    "domain": 5,
 }
 LAYER_PREFIXES = {
+    "application.entrypoints": "entrypoints",
     "application.infrastructure": "infrastructure",
     "application.adapters": "adapters",
     "application.application": "application",
