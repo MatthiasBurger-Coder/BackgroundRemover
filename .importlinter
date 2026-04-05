@@ -1,66 +1,66 @@
 [importlinter]
-root_package = src
+root_package = application
 include_external_packages = False
 
 [importlinter:contract:hexagonal_layers]
 name = Hexagonal layers depend inward only
 type = layers
 layers =
-    src.application.infrastructure
-    src.application.adapters
-    src.application.application
-    src.application.ports
-    src.application.domain
+    application.infrastructure
+    application.adapters
+    application.application
+    application.ports
+    application.domain
 
 [importlinter:contract:incoming_outgoing_adapter_separation]
 name = Incoming adapters must not import outgoing adapters
 type = forbidden
 source_modules =
-    src.application.adapters.incoming
+    application.adapters.incoming
 forbidden_modules =
-    src.application.adapters.outgoing
+    application.adapters.outgoing
 
 [importlinter:contract:outgoing_incoming_adapter_separation]
 name = Outgoing adapters must not import incoming adapters
 type = forbidden
 source_modules =
-    src.application.adapters.outgoing
+    application.adapters.outgoing
 forbidden_modules =
-    src.application.adapters.incoming
+    application.adapters.incoming
 
 [importlinter:contract:domain_must_not_import_outer_layers]
 name = Domain must not import application adapters or infrastructure
 type = forbidden
 source_modules =
-    src.application.domain
+    application.domain
 forbidden_modules =
-    src.application.application
-    src.application.adapters
-    src.application.infrastructure
+    application.application
+    application.adapters
+    application.infrastructure
 
 [importlinter:contract:ports_must_not_import_application_or_technical_layers]
 name = Ports must not import application adapters or infrastructure
 type = forbidden
 source_modules =
-    src.application.ports
+    application.ports
 forbidden_modules =
-    src.application.application
-    src.application.adapters
-    src.application.infrastructure
+    application.application
+    application.adapters
+    application.infrastructure
 
 [importlinter:contract:application_must_not_import_adapters_or_infrastructure]
 name = Application must not import adapters or infrastructure directly
 type = forbidden
 source_modules =
-    src.application.application
+    application.application
 forbidden_modules =
-    src.application.adapters
-    src.application.infrastructure
+    application.adapters
+    application.infrastructure
 
 [importlinter:contract:outgoing_adapters_must_not_import_application]
 name = Outgoing adapters must not depend on application orchestration
 type = forbidden
 source_modules =
-    src.application.adapters.outgoing
+    application.adapters.outgoing
 forbidden_modules =
-    src.application.application
+    application.application

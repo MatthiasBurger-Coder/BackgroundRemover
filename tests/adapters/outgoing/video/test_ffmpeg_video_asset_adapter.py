@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from src.application.adapters.outgoing.video.ffmpeg_video_asset_adapter import (
+from application.adapters.outgoing.video.ffmpeg_video_asset_adapter import (
     FfmpegVideoAssetAdapter,
 )
 

@@ -7,8 +7,8 @@ import logging
 from typing import Any
 
 import streamlit as st
-from src.application.domain.errors.video_asset_errors import VideoAssetNotFoundError
-from src.application.infrastructure.wiring.video_asset_backend import get_video_asset_backend
+from application.domain.errors.video_asset_errors import VideoAssetNotFoundError
+from application.infrastructure.wiring.video_asset_backend import get_video_asset_backend
 
 from ui.state.generation_state import (
     bump_playback_generation,

@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 
 import streamlit as st
-from src.application.domain.errors.video_asset_errors import VideoFrameExtractionError
-from src.application.infrastructure.wiring.video_asset_backend import get_video_asset_backend
+from application.domain.errors.video_asset_errors import VideoFrameExtractionError
+from application.infrastructure.wiring.video_asset_backend import get_video_asset_backend
 
 from ui.mock_data import PromptEntry
 from ui.state.generation_state import bump_playback_generation, bump_workbench_generation

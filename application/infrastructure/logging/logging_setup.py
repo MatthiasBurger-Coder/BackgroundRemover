@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 
-from src.application.infrastructure.context.correlation_id_manager import CorrelationIdManager
-from src.application.infrastructure.logging.log_levels import LogLevel, install_trace_level
+from application.infrastructure.context.correlation_id_manager import CorrelationIdManager
+from application.infrastructure.logging.log_levels import LogLevel, install_trace_level
 
 
 class CorrelationIdFilter(logging.Filter):

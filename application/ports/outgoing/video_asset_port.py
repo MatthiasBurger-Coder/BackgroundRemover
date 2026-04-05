@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from src.application.domain.model.video_asset import VideoAssetMetadata, VideoFrame
+from application.domain.model.video_asset import VideoAssetMetadata, VideoFrame
 
 
 class VideoAssetPort(Protocol):

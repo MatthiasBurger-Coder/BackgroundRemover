@@ -6,7 +6,7 @@ import logging
 import time
 
 import streamlit as st
-from src.application.adapters.incoming.ui.playback_session import (
+from application.adapters.incoming.ui.playback_session import (
     PlaybackProgress,
     advance_playback_position,
     build_navigation_position,

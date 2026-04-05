@@ -9,8 +9,8 @@ from contextlib import ExitStack
 from unittest.mock import Mock, patch
 
 import ui.state as ui_state
-from src.application.domain.errors.video_asset_errors import VideoFrameExtractionError
-from src.application.domain.model.video_asset import VideoAssetMetadata
+from application.domain.errors.video_asset_errors import VideoFrameExtractionError
+from application.domain.model.video_asset import VideoAssetMetadata
 
 
 class _SessionState(dict):

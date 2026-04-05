@@ -7,10 +7,10 @@ from functools import wraps
 from time import perf_counter
 from typing import Any, TypeVar, cast
 
-from src.application.infrastructure.context.correlation_id_manager import CorrelationIdManager
-from src.application.infrastructure.logging.formatting import prepare_arguments_for_logging
-from src.application.infrastructure.logging.level_logger_registry import LevelLoggerRegistry
-from src.application.infrastructure.logging.log_levels import LogLevel, install_trace_level
+from application.infrastructure.context.correlation_id_manager import CorrelationIdManager
+from application.infrastructure.logging.formatting import prepare_arguments_for_logging
+from application.infrastructure.logging.level_logger_registry import LevelLoggerRegistry
+from application.infrastructure.logging.log_levels import LogLevel, install_trace_level
 
 F = TypeVar("F", bound=Callable[..., Any])
 _LOGGABLE_MARKER = "__loggable_level__"

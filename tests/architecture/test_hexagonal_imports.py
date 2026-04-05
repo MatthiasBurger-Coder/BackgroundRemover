@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SOURCE_ROOT = PROJECT_ROOT / "src" / "application"
+SOURCE_ROOT = PROJECT_ROOT / "application"
 LAYER_ORDER = {
     "infrastructure": 0,
     "adapters": 1,
@@ -16,11 +16,11 @@ LAYER_ORDER = {
     "domain": 4,
 }
 LAYER_PREFIXES = {
-    "src.application.infrastructure": "infrastructure",
-    "src.application.adapters": "adapters",
-    "src.application.application": "application",
-    "src.application.ports": "ports",
-    "src.application.domain": "domain",
+    "application.infrastructure": "infrastructure",
+    "application.adapters": "adapters",
+    "application.application": "application",
+    "application.ports": "ports",
+    "application.domain": "domain",
 }
 
 
@@ -49,13 +49,13 @@ class HexagonalImportTests(unittest.TestCase):
         violations: list[str] = []
         for module_name, path in _iter_application_modules():
             imported_modules = _collect_internal_imports(path)
-            if module_name.startswith("src.application.adapters.incoming"):
+            if module_name.startswith("application.adapters.incoming"):
                 for imported_module in imported_modules:
-                    if imported_module.startswith("src.application.adapters.outgoing"):
+                    if imported_module.startswith("application.adapters.outgoing"):
                         violations.append(f"{module_name} must not import {imported_module}")
-            if module_name.startswith("src.application.adapters.outgoing"):
+            if module_name.startswith("application.adapters.outgoing"):
                 for imported_module in imported_modules:
-                    if imported_module.startswith("src.application.adapters.incoming"):
+                    if imported_module.startswith("application.adapters.incoming"):
                         violations.append(f"{module_name} must not import {imported_module}")
 
         self.assertEqual(violations, [], "\n".join(violations))
@@ -83,13 +83,13 @@ def _collect_internal_imports(path: Path) -> set[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name.startswith("src.application."):
+                if alias.name.startswith("application."):
                     imports.add(alias.name)
         elif (
             isinstance(node, ast.ImportFrom)
             and node.level == 0
             and node.module
-            and node.module.startswith("src.application.")
+            and node.module.startswith("application.")
         ):
             imports.add(node.module)
     return imports

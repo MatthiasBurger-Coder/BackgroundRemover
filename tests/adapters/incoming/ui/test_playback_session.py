@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from src.application.adapters.incoming.ui.playback_session import (
+from application.adapters.incoming.ui.playback_session import (
     advance_playback_position,
     build_navigation_position,
     start_playback,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from src.application.infrastructure.logging.level_logger import LevelLogger
+from application.infrastructure.logging.level_logger import LevelLogger
 
 
 class WarnLevelLogger(LevelLogger):

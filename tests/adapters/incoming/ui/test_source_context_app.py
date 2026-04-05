@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.application.infrastructure.wiring.video_asset_backend import get_video_asset_backend
+from application.infrastructure.wiring.video_asset_backend import get_video_asset_backend
 from streamlit.testing.v1 import AppTest
 
 TEST_VIDEO_PATH = Path(__file__).resolve().parents[3] / "resources" / "miki.mp4"

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 
-from src.application.infrastructure.logging.formatting import summarize_value_for_logging
-from src.application.infrastructure.logging.level_logger import LevelLogger
+from application.infrastructure.logging.formatting import summarize_value_for_logging
+from application.infrastructure.logging.level_logger import LevelLogger
 
 
 class TraceLevelLogger(LevelLogger):

@@ -15,12 +15,12 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any, cast
 
-from src.application.domain.errors.video_asset_errors import (
+from application.domain.errors.video_asset_errors import (
     VideoAssetNotFoundError,
     VideoFrameExtractionError,
     VideoProbeError,
 )
-from src.application.domain.model.video_asset import VideoAssetMetadata, VideoFrame
+from application.domain.model.video_asset import VideoAssetMetadata, VideoFrame
 
 LOGGER = logging.getLogger(__name__)
 

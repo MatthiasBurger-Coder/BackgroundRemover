@@ -10,7 +10,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import streamlit as st
-from src.application.infrastructure.logging import LogLevel, configure_logging
+from application.infrastructure.logging import LogLevel, configure_logging
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from ui.components import (

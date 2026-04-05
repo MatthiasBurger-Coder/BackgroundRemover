@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 
 import streamlit as st
-from src.application.adapters.incoming.ui.playback_session import build_navigation_position
-from src.application.domain.model.video_asset import VideoAssetMetadata
+from application.adapters.incoming.ui.playback_session import build_navigation_position
+from application.domain.model.video_asset import VideoAssetMetadata
 
 from ui.state.playback_state import apply_playback_progress, clamp_current_frame_index
 from ui.state.timecode import format_time_seconds_for_frame

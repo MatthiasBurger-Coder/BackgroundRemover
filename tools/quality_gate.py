@@ -34,7 +34,7 @@ def _lint_imports_command() -> list[str]:
 
 
 COMMANDS: dict[str, list[str]] = {
-    "lint": [PYTHON, "-m", "ruff", "check", "src", "ui", "tests"],
+    "lint": [PYTHON, "-m", "ruff", "check", "application", "ui", "tests"],
     "arch-tests": [PYTHON, "-m", "unittest", "tests.architecture.test_hexagonal_imports"],
     "typecheck": [PYTHON, "-m", "mypy"],
     "test": [PYTHON, "-m", "unittest", "discover", "-s", "tests", "-t", "."],

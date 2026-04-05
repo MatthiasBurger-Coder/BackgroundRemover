@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.application.domain.model.video_asset import VideoAssetMetadata, VideoFrame
-from src.application.ports.outgoing.video_asset_port import VideoAssetPort
+from application.domain.model.video_asset import VideoAssetMetadata, VideoFrame
+from application.ports.outgoing.video_asset_port import VideoAssetPort
 
 
 @dataclass(frozen=True)

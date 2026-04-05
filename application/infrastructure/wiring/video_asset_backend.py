@@ -6,10 +6,10 @@ import logging
 from dataclasses import dataclass
 from functools import lru_cache
 
-from src.application.adapters.outgoing.video.ffmpeg_video_asset_adapter import (
+from application.adapters.outgoing.video.ffmpeg_video_asset_adapter import (
     FfmpegVideoAssetAdapter,
 )
-from src.application.application.use_cases.video_asset_use_cases import (
+from application.application.use_cases.video_asset_use_cases import (
     GetVideoAssetMetadataUseCase,
     GetVideoFrameUseCase,
     RegisterVideoAssetUseCase,

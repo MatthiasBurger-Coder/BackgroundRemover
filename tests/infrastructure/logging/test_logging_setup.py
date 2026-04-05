@@ -6,8 +6,8 @@ import logging
 import threading
 import unittest
 
-from src.application.infrastructure.context.correlation_id_manager import CorrelationIdManager
-from src.application.infrastructure.logging.logging_setup import (
+from application.infrastructure.context.correlation_id_manager import CorrelationIdManager
+from application.infrastructure.logging.logging_setup import (
     CorrelationIdFilter,
     configure_logging,
 )
