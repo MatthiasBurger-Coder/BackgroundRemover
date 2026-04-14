@@ -15,12 +15,19 @@ def _resolve_log_level() -> LogLevel:
     except KeyError:
         return LogLevel.DEBUG
 
+
+def _resolve_api_host() -> str:
+    configured_host = os.getenv("BACKGROUND_REMOVER_API_HOST")
+    if configured_host:
+        return configured_host
+    return "0.0.0.0"
+
 if __name__ == "__main__":
     configure_logging(level=_resolve_log_level())
     port = int(os.getenv("BACKGROUND_REMOVER_API_PORT", "8010"))
     uvicorn.run(
         "application.entrypoints.api.app:app",
-        host="127.0.0.1",
+        host=_resolve_api_host(),
         port=port,
         reload=False,
         log_config=None,

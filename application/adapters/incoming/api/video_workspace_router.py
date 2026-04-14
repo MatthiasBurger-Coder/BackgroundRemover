@@ -6,16 +6,18 @@ import base64
 from dataclasses import dataclass
 from typing import Protocol
 
-from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile, status
 
 from application.adapters.incoming.api.api_models import (
     AssetMetadataResponse,
     AssetRegistrationResponse,
     CreatePromptRequest,
+    MaskPreviewResponse,
     MaskSettingsResponse,
     OverlayStateResponse,
     PlaybackStateResponse,
     PromptEntryResponse,
+    RenderedImageResponse,
     SyncWorkbenchFrameRequest,
     UpdateWorkbenchSettingsRequest,
     VideoFrameResponse,
@@ -27,6 +29,7 @@ from application.domain.errors.video_asset_errors import (
     VideoFrameExtractionError,
     VideoProbeError,
 )
+from application.domain.model.mask_preview import MaskPreviewResult, RenderedImage
 from application.domain.model.video_asset import VideoAssetContent, VideoAssetMetadata, VideoFrame
 from application.domain.model.workbench_session import WorkbenchSession
 
@@ -150,19 +153,12 @@ def create_video_workspace_router(
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.get("/assets/{asset_id}/source")
-    def get_asset_source(asset_id: str) -> Response:
+    def get_asset_source(asset_id: str, request: Request) -> Response:
         try:
             content = dependencies.get_video_content.execute(asset_id)
         except VideoAssetNotFoundError as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
-        return Response(
-            content=content.video_bytes,
-            media_type=content.mime_type,
-            headers={
-                "Content-Disposition": f'inline; filename="{content.filename}"',
-                "Cache-Control": "no-store",
-            },
-        )
+        return _build_video_content_response(content=content, range_header=request.headers.get("range"))
 
     @router.get("/assets/{asset_id}/frames/{frame_index}", response_model=VideoFrameResponse)
     def get_frame(asset_id: str, frame_index: int) -> VideoFrameResponse:
@@ -328,5 +324,113 @@ def _build_workbench_state_response(session: WorkbenchSession) -> WorkbenchState
             feather=session.mask_settings.feather,
             invert=session.mask_settings.invert,
         ),
+        maskPreview=_build_mask_preview_response(session.mask_preview_result),
         workbenchStatus="ready",
     )
+
+
+def _build_mask_preview_response(mask_preview_result: MaskPreviewResult | None) -> MaskPreviewResponse | None:
+    if mask_preview_result is None:
+        return None
+
+    return MaskPreviewResponse(
+        mode=mask_preview_result.mode,
+        frameIndex=mask_preview_result.frame_index,
+        sourceWidth=mask_preview_result.source_size.width,
+        sourceHeight=mask_preview_result.source_size.height,
+        previewWidth=mask_preview_result.preview_size.width,
+        previewHeight=mask_preview_result.preview_size.height,
+        promptCount=mask_preview_result.prompt_count,
+        coverageRatio=mask_preview_result.coverage_ratio,
+        overlayImage=_build_rendered_image_response(mask_preview_result.overlay_image),
+        maskImage=_build_rendered_image_response(mask_preview_result.mask_image),
+    )
+
+
+def _build_rendered_image_response(rendered_image: RenderedImage) -> RenderedImageResponse:
+    encoded_image = base64.b64encode(rendered_image.image_bytes).decode("ascii")
+    return RenderedImageResponse(
+        mimeType=rendered_image.mime_type,
+        width=rendered_image.width,
+        height=rendered_image.height,
+        imageDataUrl=f"data:{rendered_image.mime_type};base64,{encoded_image}",
+    )
+
+
+def _build_video_content_response(*, content: VideoAssetContent, range_header: str | None) -> Response:
+    total_size = len(content.video_bytes)
+    base_headers = {
+        "Content-Disposition": f'inline; filename="{content.filename}"',
+        "Cache-Control": "no-store",
+        "Accept-Ranges": "bytes",
+    }
+    if range_header is None:
+        return Response(
+            content=content.video_bytes,
+            media_type=content.mime_type,
+            headers={
+                **base_headers,
+                "Content-Length": str(total_size),
+            },
+        )
+
+    try:
+        start_index, end_index = _parse_byte_range(range_header=range_header, total_size=total_size)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+            detail=str(error),
+            headers={"Content-Range": f"bytes */{total_size}"},
+        ) from error
+
+    partial_content = content.video_bytes[start_index : end_index + 1]
+    return Response(
+        content=partial_content,
+        media_type=content.mime_type,
+        status_code=status.HTTP_206_PARTIAL_CONTENT,
+        headers={
+            **base_headers,
+            "Content-Length": str(len(partial_content)),
+            "Content-Range": f"bytes {start_index}-{end_index}/{total_size}",
+        },
+    )
+
+
+def _parse_byte_range(*, range_header: str, total_size: int) -> tuple[int, int]:
+    if total_size <= 0:
+        raise ValueError("Requested range for empty content.")
+    if not range_header.startswith("bytes="):
+        raise ValueError("Only byte ranges are supported.")
+
+    requested_range = range_header.removeprefix("bytes=").strip()
+    if "," in requested_range:
+        raise ValueError("Multiple byte ranges are not supported.")
+
+    start_text, _, end_text = requested_range.partition("-")
+    if not _:
+        raise ValueError("Malformed byte range.")
+
+    if start_text == "" and end_text == "":
+        raise ValueError("Malformed byte range.")
+
+    if start_text == "":
+        suffix_length = int(end_text)
+        if suffix_length <= 0:
+            raise ValueError("Invalid suffix byte range.")
+        start_index = max(total_size - suffix_length, 0)
+        end_index = total_size - 1
+        return start_index, end_index
+
+    start_index = int(start_text)
+    if start_index < 0 or start_index >= total_size:
+        raise ValueError("Byte range start is outside the content size.")
+
+    if end_text == "":
+        end_index = total_size - 1
+    else:
+        end_index = int(end_text)
+        if end_index < start_index:
+            raise ValueError("Byte range end precedes the start.")
+        end_index = min(end_index, total_size - 1)
+
+    return start_index, end_index

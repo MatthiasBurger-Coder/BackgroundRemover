@@ -60,6 +60,34 @@ class MaskSettingsResponse(BaseModel):
     invert: bool
 
 
+class RenderedImageResponse(BaseModel):
+    """Serializable preview artifact transported as a browser-ready data URL."""
+
+    mime_type: str = Field(alias="mimeType")
+    width: int
+    height: int
+    image_data_url: str = Field(alias="imageDataUrl")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class MaskPreviewResponse(BaseModel):
+    """Serializable result for a generated workbench mask preview."""
+
+    mode: str
+    frame_index: int = Field(alias="frameIndex")
+    source_width: int = Field(alias="sourceWidth")
+    source_height: int = Field(alias="sourceHeight")
+    preview_width: int = Field(alias="previewWidth")
+    preview_height: int = Field(alias="previewHeight")
+    prompt_count: int = Field(alias="promptCount")
+    coverage_ratio: float = Field(alias="coverageRatio")
+    overlay_image: RenderedImageResponse = Field(alias="overlayImage")
+    mask_image: RenderedImageResponse = Field(alias="maskImage")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class WorkbenchStateResponse(BaseModel):
     """Serializable workbench state used by the browser editor."""
 
@@ -70,6 +98,7 @@ class WorkbenchStateResponse(BaseModel):
     prompt_entries: list[PromptEntryResponse] = Field(alias="promptEntries")
     overlay_state: OverlayStateResponse = Field(alias="overlayState")
     selected_mask_settings: MaskSettingsResponse = Field(alias="selectedMaskSettings")
+    mask_preview: MaskPreviewResponse | None = Field(alias="maskPreview")
     workbench_status: str = Field(alias="workbenchStatus")
 
     model_config = ConfigDict(populate_by_name=True)

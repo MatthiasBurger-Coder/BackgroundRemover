@@ -1,52 +1,103 @@
-import { useEffect, useEffectEvent, useRef, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type MutableRefObject } from 'react'
 import { usePlaybackState } from '../context/PlaybackContext'
 import { useSourceState } from '../context/SourceContext'
 import { useWorkspaceActions } from '../context/WorkspaceActionsContext'
-import { clampFrameIndex, secondsToFrameIndex } from '../utils/timecode'
+import type { VideoFrameData } from '../models/workspace'
+import { getFrame } from '../services/api/workspaceApi'
+import { clampFrameIndex, frameIndexToSeconds, secondsToFrameIndex } from '../utils/timecode'
 
 interface PreviewVideoController {
   videoRef: MutableRefObject<HTMLVideoElement | null>
+  exactPreviewFrame: VideoFrameData | null
   togglePlayback: () => Promise<void>
-  seekToFrame: (frameIndex: number) => void
-  stepFrame: (step: number) => void
+  seekToFrame: (frameIndex: number) => Promise<void>
+  stepFrame: (step: number) => Promise<void>
   adoptCurrentFrame: () => Promise<void>
 }
 
 export function usePreviewVideoController(): PreviewVideoController {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const exactPreviewRequestIdRef = useRef(0)
+  const exactPreviewPositionRef = useRef<{ frameIndex: number; timestampSeconds: number } | null>(null)
   const sourceState = useSourceState()
   const playbackState = usePlaybackState()
   const { syncWorkbenchFromPlaybackFrame, updatePlaybackState } = useWorkspaceActions()
+  const [exactPreviewFrame, setExactPreviewFrame] = useState<VideoFrameData | null>(null)
 
   const publishPlaybackTelemetry = useEffectEvent((previewStatus?: 'playing' | 'paused' | 'seeking') => {
     if (sourceState.metadata === null || videoRef.current === null) {
       return
     }
 
-    const frameIndex = secondsToFrameIndex(
-      videoRef.current.currentTime,
-      sourceState.metadata.fps,
-      sourceState.metadata.frameCount,
-    )
+    const exactPreviewPosition =
+      videoRef.current.paused || previewStatus === 'seeking' ? exactPreviewPositionRef.current : null
+    const frameIndex =
+      exactPreviewPosition?.frameIndex ??
+      secondsToFrameIndex(
+        videoRef.current.currentTime,
+        sourceState.metadata.fps,
+        sourceState.metadata.frameCount,
+      )
+    const timestampSeconds = exactPreviewPosition?.timestampSeconds ?? videoRef.current.currentTime
     updatePlaybackState({
       playbackRunning: !videoRef.current.paused && !videoRef.current.ended,
       playbackFrameIndex: frameIndex,
-      playbackTimestampSeconds: videoRef.current.currentTime,
+      playbackTimestampSeconds: timestampSeconds,
       playbackFps: sourceState.metadata.fps,
       previewStatus: previewStatus ?? (!videoRef.current.paused ? 'playing' : 'paused'),
     })
   })
 
-  const adoptPausedFrame = useEffectEvent(async () => {
+  const resolveCurrentFrameIndex = useEffectEvent((): number | null => {
     if (sourceState.metadata === null || videoRef.current === null) {
-      return
+      return null
     }
 
-    const frameIndex = secondsToFrameIndex(
+    return secondsToFrameIndex(
       videoRef.current.currentTime,
       sourceState.metadata.fps,
       sourceState.metadata.frameCount,
     )
+  })
+
+  const clearExactPreviewFrame = useCallback(() => {
+    exactPreviewRequestIdRef.current += 1
+    exactPreviewPositionRef.current = null
+    setExactPreviewFrame(null)
+  }, [])
+
+  const loadExactPreviewFrame = useCallback(async (frameIndex: number) => {
+    if (sourceState.activeAssetId === null) {
+      return
+    }
+
+    const requestId = exactPreviewRequestIdRef.current + 1
+    exactPreviewRequestIdRef.current = requestId
+    try {
+      const frame = await getFrame(sourceState.activeAssetId, frameIndex)
+      if (exactPreviewRequestIdRef.current !== requestId) {
+        return
+      }
+      exactPreviewPositionRef.current = {
+        frameIndex: frame.frameIndex,
+        timestampSeconds: frame.timestampSeconds,
+      }
+      setExactPreviewFrame(frame)
+    } catch {
+      if (exactPreviewRequestIdRef.current !== requestId) {
+        return
+      }
+      exactPreviewPositionRef.current = null
+      setExactPreviewFrame(null)
+    }
+  }, [sourceState.activeAssetId])
+
+  const adoptPausedFrame = useEffectEvent(async () => {
+    const frameIndex = resolveCurrentFrameIndex()
+    if (frameIndex === null || videoRef.current === null) {
+      return
+    }
+
     await syncWorkbenchFromPlaybackFrame(frameIndex, videoRef.current.currentTime)
   })
 
@@ -57,10 +108,15 @@ export function usePreviewVideoController(): PreviewVideoController {
     }
 
     const handlePlay = () => {
+      clearExactPreviewFrame()
       publishPlaybackTelemetry('playing')
     }
     const handlePause = () => {
       publishPlaybackTelemetry('paused')
+      const frameIndex = resolveCurrentFrameIndex()
+      if (frameIndex !== null) {
+        void loadExactPreviewFrame(frameIndex)
+      }
       void adoptPausedFrame()
     }
     const handleTimeUpdate = () => {
@@ -71,14 +127,29 @@ export function usePreviewVideoController(): PreviewVideoController {
     const handleSeeking = () => {
       publishPlaybackTelemetry('seeking')
     }
+    const handleLoadedMetadata = () => {
+      publishPlaybackTelemetry('paused')
+      const frameIndex = resolveCurrentFrameIndex()
+      if (frameIndex !== null) {
+        void loadExactPreviewFrame(frameIndex)
+      }
+    }
     const handleSeeked = () => {
       publishPlaybackTelemetry(videoElement.paused ? 'paused' : 'playing')
       if (videoElement.paused) {
+        const frameIndex = resolveCurrentFrameIndex()
+        if (frameIndex !== null) {
+          void loadExactPreviewFrame(frameIndex)
+        }
         void adoptPausedFrame()
       }
     }
     const handleEnded = () => {
       publishPlaybackTelemetry('paused')
+      const frameIndex = resolveCurrentFrameIndex()
+      if (frameIndex !== null) {
+        void loadExactPreviewFrame(frameIndex)
+      }
       void adoptPausedFrame()
     }
 
@@ -86,6 +157,7 @@ export function usePreviewVideoController(): PreviewVideoController {
     videoElement.addEventListener('pause', handlePause)
     videoElement.addEventListener('timeupdate', handleTimeUpdate)
     videoElement.addEventListener('seeking', handleSeeking)
+    videoElement.addEventListener('loadedmetadata', handleLoadedMetadata)
     videoElement.addEventListener('seeked', handleSeeked)
     videoElement.addEventListener('ended', handleEnded)
 
@@ -94,16 +166,19 @@ export function usePreviewVideoController(): PreviewVideoController {
       videoElement.removeEventListener('pause', handlePause)
       videoElement.removeEventListener('timeupdate', handleTimeUpdate)
       videoElement.removeEventListener('seeking', handleSeeking)
+      videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata)
       videoElement.removeEventListener('seeked', handleSeeked)
       videoElement.removeEventListener('ended', handleEnded)
     }
-  }, [adoptPausedFrame, publishPlaybackTelemetry, sourceState.activeAssetId])
+  }, [clearExactPreviewFrame, loadExactPreviewFrame, sourceState.activeAssetId])
 
   useEffect(() => {
     if (videoRef.current === null) {
       return
     }
 
+    exactPreviewRequestIdRef.current += 1
+    exactPreviewPositionRef.current = null
     videoRef.current.currentTime = 0
     videoRef.current.pause()
   }, [sourceState.sourceUrl])
@@ -114,6 +189,7 @@ export function usePreviewVideoController(): PreviewVideoController {
     }
 
     if (videoRef.current.paused) {
+      clearExactPreviewFrame()
       await videoRef.current.play()
       return
     }
@@ -121,21 +197,39 @@ export function usePreviewVideoController(): PreviewVideoController {
     videoRef.current.pause()
   }
 
-  const seekToFrame = (frameIndex: number) => {
+  const seekToFrame = async (frameIndex: number) => {
     if (videoRef.current === null || sourceState.metadata === null || !videoRef.current.paused) {
       return
     }
 
     const nextFrameIndex = clampFrameIndex(frameIndex, sourceState.metadata.frameCount)
-    videoRef.current.currentTime = nextFrameIndex / sourceState.metadata.fps
+    const targetSeconds =
+      frameIndexToSeconds(nextFrameIndex, sourceState.metadata.fps) + (0.5 / sourceState.metadata.fps)
+    exactPreviewPositionRef.current = {
+      frameIndex: nextFrameIndex,
+      timestampSeconds: targetSeconds,
+    }
+    updatePlaybackState({
+      playbackRunning: false,
+      playbackFrameIndex: nextFrameIndex,
+      playbackTimestampSeconds: targetSeconds,
+      playbackFps: sourceState.metadata.fps,
+      previewStatus: 'seeking',
+    })
+    videoRef.current.currentTime = targetSeconds
+    await loadExactPreviewFrame(nextFrameIndex)
   }
 
-  const stepFrame = (step: number) => {
+  const stepFrame = async (step: number) => {
     if (sourceState.metadata === null) {
       return
     }
 
-    seekToFrame(playbackState.playbackFrameIndex + step)
+    const currentFrameIndex =
+      exactPreviewPositionRef.current?.frameIndex ??
+      exactPreviewFrame?.frameIndex ??
+      playbackState.playbackFrameIndex
+    await seekToFrame(currentFrameIndex + step)
   }
 
   const adoptCurrentFrame = async () => {
@@ -153,6 +247,7 @@ export function usePreviewVideoController(): PreviewVideoController {
 
   return {
     videoRef,
+    exactPreviewFrame,
     togglePlayback,
     seekToFrame,
     stepFrame,

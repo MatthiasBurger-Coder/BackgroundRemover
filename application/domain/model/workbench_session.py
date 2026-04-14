@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
+from application.domain.model.mask_preview import MaskPreviewResult
+
 
 @dataclass(frozen=True)
 class PromptEntry:
@@ -44,6 +46,7 @@ class WorkbenchSession:
     prompt_entries: tuple[PromptEntry, ...] = ()
     mask_settings: MaskSettings = field(default_factory=MaskSettings)
     overlay_state: OverlayState = field(default_factory=OverlayState)
+    mask_preview_result: MaskPreviewResult | None = None
 
     def with_frame(self, *, frame_index: int, timestamp_seconds: float) -> WorkbenchSession:
         return replace(
@@ -66,3 +69,9 @@ class WorkbenchSession:
 
     def with_preview_refresh_generation(self, generation: int) -> WorkbenchSession:
         return replace(self, preview_refresh_generation=generation)
+
+    def with_mask_preview_result(self, mask_preview_result: MaskPreviewResult | None) -> WorkbenchSession:
+        return replace(self, mask_preview_result=mask_preview_result)
+
+    def cleared_mask_preview_result(self) -> WorkbenchSession:
+        return replace(self, mask_preview_result=None)

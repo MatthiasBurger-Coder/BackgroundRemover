@@ -50,6 +50,26 @@ export interface VideoFrameData {
   imageDataUrl: string
 }
 
+export interface RenderedImageData {
+  mimeType: string
+  width: number
+  height: number
+  imageDataUrl: string
+}
+
+export interface MaskPreview {
+  mode: 'preview' | 'final'
+  frameIndex: number
+  sourceWidth: number
+  sourceHeight: number
+  previewWidth: number
+  previewHeight: number
+  promptCount: number
+  coverageRatio: number
+  overlayImage: RenderedImageData
+  maskImage: RenderedImageData
+}
+
 export interface SourceState {
   activeAssetId: string | null
   videoName: string
@@ -76,6 +96,7 @@ export interface WorkbenchState {
   promptEntries: PromptEntry[]
   overlayState: OverlayState
   selectedMaskSettings: MaskSettings
+  maskPreview: MaskPreview | null
   workbenchStatus: WorkbenchStatus
   previewRefreshGeneration: number
   errorMessage: string | null
@@ -95,6 +116,7 @@ export interface WorkbenchStateResponse {
   promptEntries: PromptEntry[]
   overlayState: OverlayState
   selectedMaskSettings: MaskSettings
+  maskPreview: MaskPreview | null
   workbenchStatus: string
 }
 

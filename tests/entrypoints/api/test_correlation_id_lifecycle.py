@@ -6,10 +6,9 @@ import asyncio
 import logging
 import unittest
 
-from fastapi import Request
-
 from application.entrypoints.api.request_lifecycle import run_with_action_correlation
 from application.infrastructure.context.correlation_id_manager import CorrelationIdManager
+from fastapi import Request
 
 
 class _CaptureHandler(logging.Handler):

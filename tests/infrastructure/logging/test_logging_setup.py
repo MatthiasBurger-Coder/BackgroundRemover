@@ -1,9 +1,8 @@
-"""Tests for logging setup and the CorrelationIdFilter."""
+"""Tests for correlation lifecycle ownership and logging setup."""
 
 from __future__ import annotations
 
 import logging
-import threading
 import unittest
 
 from application.infrastructure.context.correlation_id_manager import CorrelationIdManager
@@ -25,8 +24,47 @@ def _make_record() -> logging.LogRecord:
     )
 
 
+class CorrelationIdManagerScopeTests(unittest.TestCase):
+    """Protect explicit action lifecycle correlation semantics."""
+
+    def setUp(self) -> None:
+        CorrelationIdManager.clear()
+
+    def tearDown(self) -> None:
+        CorrelationIdManager.clear()
+
+    def test_scope_creates_temporary_cid_when_none_is_bound(self) -> None:
+        self.assertIsNone(CorrelationIdManager.get_correlation_id())
+
+        with CorrelationIdManager.scope() as correlation_id:
+            self.assertEqual(CorrelationIdManager.get_correlation_id(), correlation_id)
+            self.assertIsInstance(correlation_id, str)
+            self.assertGreater(len(correlation_id), 0)
+
+        self.assertIsNone(CorrelationIdManager.get_correlation_id())
+
+    def test_scope_reuses_existing_lifecycle_cid(self) -> None:
+        with CorrelationIdManager.lifecycle_scope() as lifecycle_cid:
+            with CorrelationIdManager.scope() as nested_cid:
+                self.assertEqual(nested_cid, lifecycle_cid)
+                self.assertEqual(CorrelationIdManager.get_correlation_id(), lifecycle_cid)
+
+            self.assertEqual(CorrelationIdManager.get_correlation_id(), lifecycle_cid)
+
+        self.assertIsNone(CorrelationIdManager.get_correlation_id())
+
+    def test_lifecycle_scope_creates_fresh_cid_and_restores_previous_context(self) -> None:
+        CorrelationIdManager.set_correlation_id("outer-cid")
+
+        with CorrelationIdManager.lifecycle_scope() as lifecycle_cid:
+            self.assertNotEqual(lifecycle_cid, "outer-cid")
+            self.assertEqual(CorrelationIdManager.get_correlation_id(), lifecycle_cid)
+
+        self.assertEqual(CorrelationIdManager.get_correlation_id(), "outer-cid")
+
+
 class CorrelationIdFilterTests(unittest.TestCase):
-    """Verify that CorrelationIdFilter injects or auto-initializes the CID onto log records."""
+    """Verify that log records reflect the active lifecycle instead of creating one implicitly."""
 
     def setUp(self) -> None:
         CorrelationIdManager.clear()
@@ -42,29 +80,13 @@ class CorrelationIdFilterTests(unittest.TestCase):
 
         self.assertEqual(record.correlation_id, "abc-123")  # type: ignore[attr-defined]
 
-    def test_filter_auto_initializes_new_cid_when_none_is_set(self) -> None:
-        # No CID initialized — filter must create one instead of writing "-".
-        # This is the Streamlit thread-pool scenario: a thread started before
-        # configure_logging() was called inherits a context with no CID.
+    def test_filter_writes_placeholder_when_no_lifecycle_is_bound(self) -> None:
         record = _make_record()
 
         CorrelationIdFilter().filter(record)
 
-        self.assertNotEqual(record.correlation_id, "-")  # type: ignore[attr-defined]
-        self.assertIsNotNone(record.correlation_id)  # type: ignore[attr-defined]
-
-    def test_filter_persists_auto_initialized_cid_within_the_same_context(self) -> None:
-        # Once the filter creates a CID it must reuse it for all subsequent records
-        # in the same execution context — not generate a fresh UUID per record.
-        record_a = _make_record()
-        record_b = _make_record()
-        filt = CorrelationIdFilter()
-
-        filt.filter(record_a)
-        filt.filter(record_b)
-
-        self.assertEqual(record_a.correlation_id, record_b.correlation_id)  # type: ignore[attr-defined]
-        self.assertNotEqual(record_a.correlation_id, "-")  # type: ignore[attr-defined]
+        self.assertEqual(record.correlation_id, "-")  # type: ignore[attr-defined]
+        self.assertIsNone(CorrelationIdManager.get_correlation_id())
 
     def test_filter_always_returns_true(self) -> None:
         record = _make_record()
@@ -73,56 +95,9 @@ class CorrelationIdFilterTests(unittest.TestCase):
 
         self.assertTrue(result)
 
-    def test_filter_reflects_updated_cid_when_overwritten_between_calls(self) -> None:
-        CorrelationIdManager.set_correlation_id("first")
-        record_a = _make_record()
-        CorrelationIdFilter().filter(record_a)
 
-        CorrelationIdManager.set_correlation_id("second")
-        record_b = _make_record()
-        CorrelationIdFilter().filter(record_b)
-
-        self.assertEqual(record_a.correlation_id, "first")  # type: ignore[attr-defined]
-        self.assertEqual(record_b.correlation_id, "second")  # type: ignore[attr-defined]
-
-    def test_filter_generates_independent_cid_in_context_without_cid(self) -> None:
-        # Simulates a Streamlit thread-pool thread (started before configure_logging).
-        # Such a thread inherits a context with no CID; the filter must give it its own.
-        CorrelationIdManager.set_correlation_id("main-cid")
-        thread_results: list[str] = []
-
-        def run_in_thread() -> None:
-            # Clear the inherited CID to reproduce the thread-pool scenario.
-            CorrelationIdManager.clear()
-            record = _make_record()
-            CorrelationIdFilter().filter(record)
-            thread_results.append(record.correlation_id)  # type: ignore[attr-defined]
-
-        t = threading.Thread(target=run_in_thread)
-        t.start()
-        t.join()
-
-        self.assertEqual(len(thread_results), 1)
-        self.assertNotEqual(thread_results[0], "-")
-        self.assertNotEqual(thread_results[0], "main-cid")
-
-    def test_filter_does_not_leak_auto_initialized_cid_to_parent_context(self) -> None:
-        # A CID created inside a thread must not bleed into the calling context.
-        main_cid_before = CorrelationIdManager.get_correlation_id()  # None after setUp
-
-        def run_in_thread() -> None:
-            CorrelationIdManager.clear()
-            CorrelationIdFilter().filter(_make_record())
-
-        t = threading.Thread(target=run_in_thread)
-        t.start()
-        t.join()
-
-        self.assertEqual(CorrelationIdManager.get_correlation_id(), main_cid_before)
-
-
-class ConfigureLoggingInitialCidTests(unittest.TestCase):
-    """Verify that configure_logging initializes a CID for the initial execution context."""
+class ConfigureLoggingTests(unittest.TestCase):
+    """Verify that logging setup stays correlation-neutral until a lifecycle is explicitly started."""
 
     def setUp(self) -> None:
         CorrelationIdManager.clear()
@@ -137,52 +112,37 @@ class ConfigureLoggingInitialCidTests(unittest.TestCase):
         root.handlers.extend(self._saved_handlers)
         root.setLevel(self._saved_level)
 
-    def test_configure_logging_sets_correlation_id_when_none_exists(self) -> None:
+    def test_configure_logging_does_not_initialize_correlation_context(self) -> None:
         self.assertIsNone(CorrelationIdManager.get_correlation_id())
 
         configure_logging()
 
-        self.assertIsNotNone(CorrelationIdManager.get_correlation_id())
+        self.assertIsNone(CorrelationIdManager.get_correlation_id())
 
-    def test_configure_logging_does_not_overwrite_preexisting_correlation_id(self) -> None:
+    def test_configure_logging_preserves_existing_correlation_id(self) -> None:
         CorrelationIdManager.set_correlation_id("preexisting-cid")
 
         configure_logging()
 
         self.assertEqual(CorrelationIdManager.get_correlation_id(), "preexisting-cid")
 
-    def test_configure_logging_does_not_overwrite_scope_correlation_id(self) -> None:
-        with CorrelationIdManager.scope() as scope_cid:
-            configure_logging()
-
-            self.assertEqual(CorrelationIdManager.get_correlation_id(), scope_cid)
-
-    def test_log_record_carries_real_cid_after_configure_logging(self) -> None:
+    def test_configured_handler_uses_active_lifecycle_cid(self) -> None:
         configure_logging()
-        expected_cid = CorrelationIdManager.get_correlation_id()
+        handler = logging.getLogger().handlers[0]
         record = _make_record()
 
-        handler = logging.getLogger().handlers[0]
-        for f in handler.filters:
-            f.filter(record)
+        with CorrelationIdManager.lifecycle_scope() as expected_cid:
+            for installed_filter in handler.filters:
+                installed_filter.filter(record)
 
         self.assertEqual(record.correlation_id, expected_cid)  # type: ignore[attr-defined]
-        self.assertNotEqual(record.correlation_id, "-")  # type: ignore[attr-defined]
 
-    def test_log_record_carries_auto_initialized_cid_without_configure_logging(self) -> None:
-        # Even without configure_logging(), the filter must not produce "-".
-        # This covers fragment reruns in thread-pool threads that never saw configure_logging.
+    def test_configured_handler_uses_placeholder_without_lifecycle(self) -> None:
+        configure_logging()
+        handler = logging.getLogger().handlers[0]
         record = _make_record()
 
-        CorrelationIdFilter().filter(record)
+        for installed_filter in handler.filters:
+            installed_filter.filter(record)
 
-        self.assertNotEqual(record.correlation_id, "-")  # type: ignore[attr-defined]
-        self.assertIsNotNone(record.correlation_id)  # type: ignore[attr-defined]
-
-    def test_initial_cid_is_a_non_empty_string(self) -> None:
-        configure_logging()
-
-        cid = CorrelationIdManager.get_correlation_id()
-
-        self.assertIsInstance(cid, str)
-        self.assertGreater(len(cid), 0)  # type: ignore[arg-type]
+        self.assertEqual(record.correlation_id, "-")  # type: ignore[attr-defined]

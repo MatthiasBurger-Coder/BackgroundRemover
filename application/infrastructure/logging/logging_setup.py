@@ -9,8 +9,6 @@ from application.infrastructure.logging.log_levels import LogLevel, install_trac
 
 class CorrelationIdFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        if CorrelationIdManager.get_correlation_id() is None:
-            CorrelationIdManager.init_correlation_id()
         record.correlation_id = CorrelationIdManager.get_correlation_id() or "-"
         return True
 
@@ -25,7 +23,6 @@ def configure_logging(
     logger_names: Iterable[str] | None = None,
 ) -> None:
     install_trace_level()
-    CorrelationIdManager.init_correlation_id()
 
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(DEFAULT_FORMAT))

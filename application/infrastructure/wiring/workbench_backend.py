@@ -5,8 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 
+from application.adapters.outgoing.rendering.svg_mask_preview_renderer_adapter import (
+    SvgMaskPreviewRendererAdapter,
+)
+from application.adapters.outgoing.segmentation.box_blur_mask_refiner_adapter import (
+    BoxBlurMaskRefinerAdapter,
+)
+from application.adapters.outgoing.segmentation.prompt_guided_person_segmenter_adapter import (
+    PromptGuidedPersonSegmenterAdapter,
+)
 from application.adapters.outgoing.storage.in_memory_workbench_session_adapter import (
     InMemoryWorkbenchSessionAdapter,
+)
+from application.application.policies.workbench_processing_profile_policy import (
+    WorkbenchProcessingProfilePolicy,
 )
 from application.application.use_cases.workbench_session_use_cases import (
     AddWorkbenchPromptUseCase,
@@ -36,18 +48,33 @@ class WorkbenchBackend:
 @lru_cache(maxsize=1)
 def get_workbench_backend() -> WorkbenchBackend:
     video_asset_backend = get_video_asset_backend()
-    adapter = InMemoryWorkbenchSessionAdapter()
-    get_workbench_session = GetWorkbenchSessionUseCase(adapter, video_asset_backend.video_asset_port)
+    workbench_session_adapter = InMemoryWorkbenchSessionAdapter()
+    person_segmenter_adapter = PromptGuidedPersonSegmenterAdapter()
+    mask_refiner_adapter = BoxBlurMaskRefinerAdapter()
+    preview_renderer_adapter = SvgMaskPreviewRendererAdapter()
+    processing_profile_policy = WorkbenchProcessingProfilePolicy()
+    get_workbench_session = GetWorkbenchSessionUseCase(
+        workbench_session_adapter,
+        video_asset_backend.video_asset_port,
+    )
     return WorkbenchBackend(
         get_workbench_session=get_workbench_session,
         sync_workbench_frame=SyncWorkbenchFrameUseCase(
-            adapter,
+            workbench_session_adapter,
             video_asset_backend.video_asset_port,
             get_workbench_session,
         ),
-        add_prompt=AddWorkbenchPromptUseCase(adapter, get_workbench_session),
-        clear_prompts=ClearWorkbenchPromptsUseCase(adapter, get_workbench_session),
-        update_settings=UpdateWorkbenchSettingsUseCase(adapter, get_workbench_session),
-        refresh_preview=RefreshWorkbenchPreviewUseCase(adapter, get_workbench_session),
-        delete_session=DeleteWorkbenchSessionUseCase(adapter),
+        add_prompt=AddWorkbenchPromptUseCase(workbench_session_adapter, get_workbench_session),
+        clear_prompts=ClearWorkbenchPromptsUseCase(workbench_session_adapter, get_workbench_session),
+        update_settings=UpdateWorkbenchSettingsUseCase(workbench_session_adapter, get_workbench_session),
+        refresh_preview=RefreshWorkbenchPreviewUseCase(
+            workbench_session_adapter,
+            video_asset_backend.video_asset_port,
+            get_workbench_session,
+            person_segmenter_adapter,
+            mask_refiner_adapter,
+            preview_renderer_adapter,
+            processing_profile_policy,
+        ),
+        delete_session=DeleteWorkbenchSessionUseCase(workbench_session_adapter),
     )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from uuid import uuid4
 
 
@@ -16,32 +16,31 @@ class CorrelationIdManager:
     MDC_KEY = "correlationId"
 
     _correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
-    _ownership_stack: ContextVar[tuple[bool, ...]] = ContextVar("correlation_owner_stack", default=())
+
+    @classmethod
+    def _generate_correlation_id(cls) -> str:
+        return str(uuid4())
 
     @classmethod
     def init_correlation_id(cls) -> None:
-        current = cls._correlation_id.get()
-        ownership_stack = cls._ownership_stack.get()
+        """Backwards-compatible helper for legacy callers.
 
-        if current is None:
-            cls._correlation_id.set(str(uuid4()))
-            cls._ownership_stack.set((*ownership_stack, True))
-            return
+        The request lifecycle should prefer ``lifecycle_scope()`` so one
+        frontend action owns exactly one cid from start to finish.
+        """
 
-        cls._ownership_stack.set((*ownership_stack, False))
+        if cls._correlation_id.get() is None:
+            cls._correlation_id.set(cls._generate_correlation_id())
 
     @classmethod
-    def clear_if_owned(cls) -> None:
-        ownership_stack = cls._ownership_stack.get()
-        if not ownership_stack:
-            return
+    def begin_lifecycle(cls, correlation_id: str | None = None) -> Token[str | None]:
+        """Bind a fresh correlation id for one explicit action lifecycle."""
 
-        owned = ownership_stack[-1]
-        remaining_stack = ownership_stack[:-1]
-        cls._ownership_stack.set(remaining_stack)
+        return cls._correlation_id.set(correlation_id or cls._generate_correlation_id())
 
-        if owned:
-            cls._correlation_id.set(None)
+    @classmethod
+    def end_lifecycle(cls, token: Token[str | None]) -> None:
+        cls._correlation_id.reset(token)
 
     @classmethod
     def get_correlation_id(cls) -> str | None:
@@ -54,13 +53,27 @@ class CorrelationIdManager:
     @classmethod
     def clear(cls) -> None:
         cls._correlation_id.set(None)
-        cls._ownership_stack.set(())
+
+    @classmethod
+    @contextmanager
+    def lifecycle_scope(cls, correlation_id: str | None = None) -> Iterator[str]:
+        """Create and own a correlation id for one complete action lifecycle."""
+
+        token = cls.begin_lifecycle(correlation_id)
+        try:
+            yield cls.get_correlation_id() or ""
+        finally:
+            cls.end_lifecycle(token)
 
     @classmethod
     @contextmanager
     def scope(cls) -> Iterator[str]:
-        cls.init_correlation_id()
-        try:
-            yield cls.get_correlation_id() or ""
-        finally:
-            cls.clear_if_owned()
+        """Reuse the active lifecycle id or create a temporary nested one."""
+
+        current = cls.get_correlation_id()
+        if current is not None:
+            yield current
+            return
+
+        with cls.lifecycle_scope() as correlation_id:
+            yield correlation_id

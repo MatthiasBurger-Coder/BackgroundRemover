@@ -7,11 +7,15 @@ import { Panel } from '../layout/Panel'
 export function PreviewPlayer() {
   const sourceState = useSourceState()
   const playbackState = usePlaybackState()
-  const { adoptCurrentFrame, seekToFrame, stepFrame, togglePlayback, videoRef } =
+  const { adoptCurrentFrame, exactPreviewFrame, seekToFrame, stepFrame, togglePlayback, videoRef } =
     usePreviewVideoController()
 
   const frameCount = sourceState.metadata?.frameCount ?? 0
   const isLoaded = sourceState.sourceUrl !== null
+  const exactFrameVisible =
+    exactPreviewFrame !== null &&
+    exactPreviewFrame.assetId === sourceState.activeAssetId &&
+    !playbackState.playbackRunning
 
   return (
     <Panel
@@ -31,11 +35,20 @@ export function PreviewPlayer() {
               ref={videoRef}
               className="viewport__media"
               src={sourceState.sourceUrl ?? undefined}
-              preload="metadata"
+              preload="auto"
               playsInline
               muted
               controls={false}
             />
+            {exactFrameVisible ? (
+              <div className="preview-still-overlay">
+                <img
+                  className="viewport__media"
+                  src={exactPreviewFrame.imageDataUrl}
+                  alt={`Exact preview frame ${exactPreviewFrame.frameIndex}`}
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="transport-strip">
@@ -45,7 +58,7 @@ export function PreviewPlayer() {
             <button
               className="button button--ghost"
               type="button"
-              onClick={() => stepFrame(-1)}
+              onClick={() => void stepFrame(-1)}
               disabled={playbackState.playbackRunning || !isLoaded}
             >
               Step -1
@@ -53,7 +66,7 @@ export function PreviewPlayer() {
             <button
               className="button button--ghost"
               type="button"
-              onClick={() => stepFrame(1)}
+              onClick={() => void stepFrame(1)}
               disabled={playbackState.playbackRunning || !isLoaded}
             >
               Step +1
@@ -76,7 +89,7 @@ export function PreviewPlayer() {
             value={Math.min(playbackState.playbackFrameIndex, Math.max(frameCount - 1, 0))}
             disabled={playbackState.playbackRunning || frameCount <= 1}
             onChange={(event) => {
-              seekToFrame(Number(event.target.value))
+              void seekToFrame(Number(event.target.value))
             }}
           />
 
